@@ -11,9 +11,14 @@ public sealed class JunctionMoveService(SqliteLedger ledger)
         string sourcePath,
         string targetPath,
         long sourceSizeBytes,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool allowSameVolumeForTesting = false)
     {
-        var guard = PathGuard.Validate(sourcePath, targetPath, sourceSizeBytes);
+        var guard = PathGuard.Validate(
+            sourcePath,
+            targetPath,
+            sourceSizeBytes,
+            allowSameVolume: allowSameVolumeForTesting);
         if (!guard.Allowed)
             throw new InvalidOperationException($"PathGuard blocked relocation ({guard.Code}): {guard.Message}");
 
@@ -60,11 +65,13 @@ public sealed class JunctionMoveService(SqliteLedger ledger)
 
 public static class NtfsJunction
 {
+    public const uint IO_REPARSE_TAG_MOUNT_POINT = 0xA0000003;
+
     // TODO: DeviceIoControl FSCTL_SET_REPARSE_POINT with a mount-point reparse buffer.
     public static void Create(string junctionPath, string targetPath) =>
         throw new NotImplementedException("NTFS junction creation is not implemented yet.");
 
-    // TODO: open the junction and compare GetFinalPathNameByHandle against expectedTarget.
+    // TODO: open the junction and compare GetFinalPathNameByHandleW against expectedTarget.
     public static bool VerifyResolvesTo(string junctionPath, string expectedTarget) =>
         throw new NotImplementedException("NTFS junction verification is not implemented yet.");
 }

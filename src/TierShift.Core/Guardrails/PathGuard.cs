@@ -1,10 +1,11 @@
 using System.IO;
+using System.Text.RegularExpressions;
 
 namespace TierShift.Core.Guardrails;
 
 public sealed record PathGuardResult(bool Allowed, string Code, string Message, bool RouteViaMsix = false);
 
-public static class PathGuard
+public static partial class PathGuard
 {
     private static readonly string[] BlockedPrefixes =
     [
@@ -28,23 +29,53 @@ public static class PathGuard
     [
         "riot vanguard",
         "easyanticheat",
+        "easyanticheat_eos",
         "battleye",
         "faceit ac"
     ];
 
-    public static PathGuardResult Validate(string sourcePath, string targetPath, long sourceSizeBytes, bool isMsixNativeMove = false)
+    [GeneratedRegex(@"^[a-z]:\\users\\[^\\]+$", RegexOptions.IgnoreCase)]
+    private static partial Regex UserProfileRootRegex();
+
+    [GeneratedRegex(@"^[a-z]:\\users\\[^\\]+\\appdata(\\(local|locallow|roaming))?$", RegexOptions.IgnoreCase)]
+    private static partial Regex AppDataContainerRootRegex();
+
+    public static PathGuardResult Validate(
+        string sourcePath,
+        string targetPath,
+        long sourceSizeBytes,
+        bool isMsixNativeMove = false,
+        bool allowSameVolume = false)
     {
-        var fullSource = Path.GetFullPath(sourcePath).TrimEnd('\\');
-        var fullTarget = Path.GetFullPath(targetPath).TrimEnd('\\');
+        if (string.IsNullOrWhiteSpace(sourcePath))
+            return new(false, "BLOCKED_DRIVE_ROOT", "Source path cannot be empty.");
+
+        if (string.IsNullOrWhiteSpace(targetPath))
+            return new(false, "BLOCKED_DRIVE_ROOT", "Target path cannot be empty.");
+
+        string fullSource;
+        string fullTarget;
+        try
+        {
+            fullSource = Path.GetFullPath(sourcePath).TrimEnd('\\');
+            fullTarget = Path.GetFullPath(targetPath).TrimEnd('\\');
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            return new(false, "BLOCKED_INVALID_PATH", $"Invalid path syntax: {ex.Message}");
+        }
 
         if (fullSource.Length <= 2 && fullSource.EndsWith(':'))
             return new(false, "BLOCKED_DRIVE_ROOT", "Drive roots cannot be relocated.");
 
         foreach (var prefix in BlockedPrefixes)
         {
-            if (fullSource.Equals(prefix, StringComparison.OrdinalIgnoreCase) ||
-                fullSource.StartsWith(prefix + "\\", StringComparison.OrdinalIgnoreCase))
-                return new(false, "BLOCKED_SYSTEM_ROOT", $"Protected OS root blocked: {prefix}");
+            if (string.IsNullOrEmpty(prefix))
+                continue;
+            var normalizedPrefix = prefix.TrimEnd('\\');
+            if (fullSource.Equals(normalizedPrefix, StringComparison.OrdinalIgnoreCase) ||
+                fullSource.StartsWith(normalizedPrefix + "\\", StringComparison.OrdinalIgnoreCase))
+                return new(false, "BLOCKED_SYSTEM_ROOT", $"Protected OS root blocked: {normalizedPrefix}");
         }
 
         if (fullSource.StartsWith(@"C:\Program Files\WindowsApps", StringComparison.OrdinalIgnoreCase) && !isMsixNativeMove)
@@ -54,8 +85,12 @@ public static class PathGuard
             return new(false, "BLOCKED_CONTAINER_ROOT", "Only child directories inside system container roots may be relocated.");
 
         var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile).TrimEnd('\\');
-        if (fullSource.Equals(userProfile, StringComparison.OrdinalIgnoreCase))
+        if ((!string.IsNullOrEmpty(userProfile) && fullSource.Equals(userProfile, StringComparison.OrdinalIgnoreCase)) ||
+            UserProfileRootRegex().IsMatch(fullSource))
             return new(false, "BLOCKED_PROFILE_ROOT", "User profile root cannot be relocated; target specific AppData child folders.");
+
+        if (AppDataContainerRootRegex().IsMatch(fullSource))
+            return new(false, "BLOCKED_CONTAINER_ROOT", "Cannot relocate AppData, Local, LocalLow, or Roaming container roots themselves. Select a specific child folder.");
 
         var lowerSource = fullSource.ToLowerInvariant();
         foreach (var token in KernelAntiCheatTokens)
@@ -67,8 +102,30 @@ public static class PathGuard
         if (Directory.Exists(fullSource) && (File.GetAttributes(fullSource) & FileAttributes.ReparsePoint) != 0)
             return new(false, "BLOCKED_ALREADY_REPARSE_POINT", "Source path is already an NTFS Reparse Point.");
 
-        var targetRoot = Path.GetPathRoot(fullTarget) ?? throw new ArgumentException("Invalid target path.");
-        var drive = new DriveInfo(targetRoot);
+        var sourceRoot = Path.GetPathRoot(fullSource);
+        var targetRoot = Path.GetPathRoot(fullTarget);
+        if (string.IsNullOrEmpty(targetRoot))
+            return new(false, "BLOCKED_DRIVE_ROOT", "Target path must include a valid drive root.");
+
+        if (!allowSameVolume &&
+            !string.IsNullOrEmpty(sourceRoot) &&
+            sourceRoot.Equals(targetRoot, StringComparison.OrdinalIgnoreCase))
+        {
+            return new(false, "BLOCKED_SAME_VOLUME", $"Target volume ({targetRoot.TrimEnd('\\')}) cannot be the same as source volume ({sourceRoot.TrimEnd('\\')}).");
+        }
+
+        DriveInfo drive;
+        try
+        {
+            drive = new DriveInfo(targetRoot);
+            if (!drive.IsReady)
+                return new(false, "BLOCKED_TARGET_DRIVE_NOT_READY", $"Target drive {drive.Name} is not mounted or ready.");
+        }
+        catch (Exception ex) when (ex is ArgumentException or DriveNotFoundException or IOException)
+        {
+            return new(false, "BLOCKED_TARGET_DRIVE_NOT_READY", $"Target drive '{targetRoot}' is unavailable: {ex.Message}");
+        }
+
         if (drive.DriveType != DriveType.Fixed)
             return new(false, "BLOCKED_TARGET_DRIVE_TYPE", $"Target drive {drive.Name} must be a local Fixed disk.");
 

@@ -27,7 +27,7 @@ public class JunctionMoveServiceTests
         {
             var service = new JunctionMoveService(new SqliteLedger(Path.Combine(root, "ledger.db")));
             await Assert.ThrowsAsync<NotImplementedException>(
-                () => service.ExecuteAsync("Test", "AppData", source, target, 7));
+                () => service.ExecuteAsync("Test", "AppData", source, target, 7, allowSameVolumeForTesting: true));
 
             Assert.Equal("keep me", File.ReadAllText(file));
             Assert.False(Directory.Exists(source + ".tiershift_bak"));
