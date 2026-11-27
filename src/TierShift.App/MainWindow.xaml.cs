@@ -306,8 +306,10 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void AppsFilter_Changed(object sender, object e) => ApplyAppsFilter();
-    private void FoldersFilter_Changed(object sender, object e) => ApplyFoldersFilter();
+    private void AppsSearchBox_TextChanged(object sender, TextChangedEventArgs e) => ApplyAppsFilter();
+    private void AppsFilterCombo_SelectionChanged(object sender, SelectionChangedEventArgs e) => ApplyAppsFilter();
+    private void FoldersSearchBox_TextChanged(object sender, TextChangedEventArgs e) => ApplyFoldersFilter();
+    private void FoldersFilterCombo_SelectionChanged(object sender, SelectionChangedEventArgs e) => ApplyFoldersFilter();
 
     private void ApplyAppsFilter()
     {

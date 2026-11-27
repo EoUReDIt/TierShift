@@ -256,11 +256,11 @@
                             x:Name="AppsSearchBox"
                             Width="300"
                             PlaceholderText="Search app name, publisher, or install path..."
-                            TextChanged="AppsFilter_Changed" />
+                            TextChanged="AppsSearchBox_TextChanged" />
                         <ComboBox
                             x:Name="AppsFilterCombo"
                             SelectedIndex="0"
-                            SelectionChanged="AppsFilter_Changed">
+                            SelectionChanged="AppsFilterCombo_SelectionChanged">
                             <ComboBoxItem Content="All Apps" Tag="All" />
                             <ComboBoxItem Content="On C: NVMe" Tag="OnC" />
                             <ComboBoxItem Content="Offloaded" Tag="Offloaded" />
@@ -336,11 +336,11 @@
                             x:Name="FoldersSearchBox"
                             Width="300"
                             PlaceholderText="Search folder name, path, or attributed app..."
-                            TextChanged="FoldersFilter_Changed" />
+                            TextChanged="FoldersSearchBox_TextChanged" />
                         <ComboBox
                             x:Name="FoldersFilterCombo"
                             SelectedIndex="0"
-                            SelectionChanged="FoldersFilter_Changed">
+                            SelectionChanged="FoldersFilterCombo_SelectionChanged">
                             <ComboBoxItem Content="All Folders" Tag="All" />
                             <ComboBoxItem Content="Orphaned" Tag="Orphaned" />
                             <ComboBoxItem Content="Offloadable" Tag="Offloadable" />
