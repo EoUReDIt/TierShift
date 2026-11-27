@@ -25,6 +25,7 @@ import testsCsprojRaw from '../../tests/TierShift.Core.Tests/TierShift.Core.Test
 import pathGuardTestsRaw from '../../tests/TierShift.Core.Tests/PathGuardTests.cs?raw';
 import junctionMoveTestsRaw from '../../tests/TierShift.Core.Tests/JunctionMoveServiceTests.cs?raw';
 import inferenceSortingTestsRaw from '../../tests/TierShift.Core.Tests/InferenceSortingEngineTests.cs?raw';
+import appDiscoveryTestsRaw from '../../tests/TierShift.Core.Tests/AppDiscoveryServiceTests.cs?raw';
 import ciWorkflowRaw from '../../.github/workflows/ci.yml?raw';
 import releaseWorkflowRaw from '../../.github/workflows/release.yml?raw';
 import installerIssRaw from '../../installer/TierShift.iss?raw';
@@ -208,6 +209,13 @@ export const DOTNET_SOLUTION_FILES: SolutionFileEntry[] = [
     description:
       'xUnit tests validating all 8 v37 inference sorting rules, cluster convergence, stop condition, and Move Manifest CSV export.',
     content: inferenceSortingTestsRaw,
+  },
+  {
+    path: 'tests/TierShift.Core.Tests/AppDiscoveryServiceTests.cs',
+    language: 'csharp',
+    description:
+      'xUnit tests verifying local volume discovery, mount-point normalization, and MSIX FindPackageVolumes lookup.',
+    content: appDiscoveryTestsRaw,
   },
   {
     path: '.github/workflows/ci.yml',

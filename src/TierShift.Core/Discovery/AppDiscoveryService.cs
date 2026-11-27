@@ -128,13 +128,39 @@ public static class AppDiscoveryService
         }, ct);
     }
 
+    public static string NormalizeDriveLetter(string driveLetter)
+    {
+        if (string.IsNullOrWhiteSpace(driveLetter))
+            return string.Empty;
+
+        var trimmed = driveLetter.Trim().TrimEnd('\\', '/');
+        if (trimmed.Length == 1 && char.IsLetter(trimmed[0]))
+            return char.ToUpperInvariant(trimmed[0]) + ":";
+
+        return trimmed.ToUpperInvariant();
+    }
+
     public static async Task MoveMsixPackageToVolumeAsync(string packageFullName, string targetDriveLetter, CancellationToken ct = default)
     {
-        var pm = new PackageManager();
-        var normalizedLetter = targetDriveLetter.TrimEnd('\\');
-        var volume = pm.GetPackageVolumes().FirstOrDefault(v =>
-                v.MountPoint.TrimEnd('\\').Equals(normalizedLetter, StringComparison.OrdinalIgnoreCase))
-            ?? throw new InvalidOperationException($"No MSIX PackageVolume found for {targetDriveLetter}.");
+        var normalizedLetter = NormalizeDriveLetter(targetDriveLetter);
+        if (string.IsNullOrEmpty(normalizedLetter))
+            throw new InvalidOperationException($"Invalid target drive letter: '{targetDriveLetter}'.");
+
+        PackageManager pm;
+        PackageVolume? volume;
+        try
+        {
+            pm = new PackageManager();
+            volume = pm.FindPackageVolumes().FirstOrDefault(v =>
+                NormalizeDriveLetter(v.MountPoint).Equals(normalizedLetter, StringComparison.OrdinalIgnoreCase));
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException($"Unable to query MSIX package volumes for {targetDriveLetter}: {ex.Message}", ex);
+        }
+
+        if (volume is null)
+            throw new InvalidOperationException($"No MSIX PackageVolume found for {targetDriveLetter}.");
 
         var op = pm.MovePackageToVolumeAsync(packageFullName, DeploymentOptions.None, volume);
         var result = await op.AsTask(ct);
