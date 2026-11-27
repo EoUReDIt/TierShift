@@ -1,0 +1,12 @@
+DeviceIoControl
+CreateFile
+GetFinalPathNameByHandle
+FSCTL_SET_REPARSE_POINT
+FSCTL_DELETE_REPARSE_POINT
+FSCTL_GET_REPARSE_POINT
+IO_REPARSE_TAG_MOUNT_POINT
+RmStartSession
+RmRegisterResources
+RmGetList
+RmShutdown
+RmEndSession

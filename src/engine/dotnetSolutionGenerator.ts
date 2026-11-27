@@ -277,15 +277,21 @@ public sealed class JunctionMoveService(SqliteLedger ledger)
 
     private static Task CopyDirectoryVerifiedAsync(string source, string target, CancellationToken ct)
     {
-        // Recursive copy preserving timestamps & basic ACLs, then asserting file count + total bytes.
-        return Task.CompletedTask;
+        // TODO: recursive copy preserving timestamps & basic ACLs, then assert file count + total bytes.
+        // Throws until implemented: this runs before any source rename, so nothing is moved or deleted.
+        throw new NotImplementedException("Verified directory copy is not implemented yet.");
     }
 }
 
 public static class NtfsJunction
 {
-    public static void Create(string junctionPath, string targetPath) { /* DeviceIoControl FSCTL_SET_REPARSE_POINT */ }
-    public static bool VerifyResolvesTo(string junctionPath, string expectedTarget) => Directory.Exists(junctionPath);
+    // TODO: DeviceIoControl FSCTL_SET_REPARSE_POINT with a mount-point reparse buffer.
+    public static void Create(string junctionPath, string targetPath) =>
+        throw new NotImplementedException("NTFS junction creation is not implemented yet.");
+
+    // TODO: open the junction and compare GetFinalPathNameByHandle against expectedTarget.
+    public static bool VerifyResolvesTo(string junctionPath, string expectedTarget) =>
+        throw new NotImplementedException("NTFS junction verification is not implemented yet.");
 }
 `,
   },
