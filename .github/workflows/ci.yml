@@ -1,0 +1,61 @@
+name: CI (WinUI 3 + xUnit + Web Workstation)
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+
+jobs:
+  dotnet-windows:
+    name: Build WinUI 3 & Run xUnit Suite (win-x64)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Verify pinned .NET 8 SDK
+        shell: pwsh
+        run: |
+          $sdk = (dotnet --version).Trim()
+          Write-Host "Active .NET SDK: $sdk"
+          if ($sdk -notmatch '^8\.0\.') {
+            Write-Error "Expected .NET 8.0.x SDK via global.json, but found '$sdk'."
+            exit 1
+          }
+
+      - name: Restore NuGet dependencies
+        run: dotnet restore TierShift.sln -r win-x64
+
+      - name: Run TierShift.Core xUnit tests
+        run: dotnet test tests/TierShift.Core.Tests/TierShift.Core.Tests.csproj -c Release -p:Platform=x64 --verbosity normal
+
+      - name: Build TierShift.App (WinUI 3 x64)
+        run: dotnet build src/TierShift.App/TierShift.App.csproj -c Release -p:Platform=x64
+
+  web-workstation:
+    name: Typecheck & Build Web Workstation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: TypeScript typecheck
+        run: npm run lint
+
+      - name: Vite production build
+        run: npm run build

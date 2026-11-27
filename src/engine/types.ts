@@ -199,7 +199,8 @@ export interface PathGuardCheckResult {
     | 'BLOCKED_TARGET_FILESYSTEM'
     | 'BLOCKED_TARGET_DRIVE_TYPE'
     | 'BLOCKED_INSUFFICIENT_SPACE'
-    | 'BLOCKED_SAME_VOLUME';
+    | 'BLOCKED_SAME_VOLUME'
+    | 'BLOCKED_NESTED_PATH';
   message: string;
   ruleMatched?: string;
   requiredBytes?: number;

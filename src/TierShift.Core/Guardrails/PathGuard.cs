@@ -107,6 +107,13 @@ public static partial class PathGuard
         if (string.IsNullOrEmpty(targetRoot))
             return new(false, "BLOCKED_DRIVE_ROOT", "Target path must include a valid drive root.");
 
+        if (fullSource.Equals(fullTarget, StringComparison.OrdinalIgnoreCase) ||
+            fullTarget.StartsWith(fullSource + "\\", StringComparison.OrdinalIgnoreCase) ||
+            fullSource.StartsWith(fullTarget + "\\", StringComparison.OrdinalIgnoreCase))
+        {
+            return new(false, "BLOCKED_NESTED_PATH", "Target path cannot be equal to or nested inside the source directory (or vice versa).");
+        }
+
         if (!allowSameVolume &&
             !string.IsNullOrEmpty(sourceRoot) &&
             sourceRoot.Equals(targetRoot, StringComparison.OrdinalIgnoreCase))

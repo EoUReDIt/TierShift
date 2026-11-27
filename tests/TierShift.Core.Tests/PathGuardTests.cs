@@ -48,4 +48,17 @@ public class PathGuardTests
         Assert.False(result.Allowed);
         Assert.Equal("BLOCKED_TARGET_DRIVE_NOT_READY", result.Code);
     }
+
+    [Fact]
+    public void Validate_BlocksNestedContainmentPaths()
+    {
+        var result = PathGuard.Validate(
+            @"C:\Program Files\Blender Foundation\Blender 4.2",
+            @"C:\Program Files\Blender Foundation\Blender 4.2\SubTarget",
+            1024,
+            allowSameVolume: true);
+
+        Assert.False(result.Allowed);
+        Assert.Equal("BLOCKED_NESTED_PATH", result.Code);
+    }
 }

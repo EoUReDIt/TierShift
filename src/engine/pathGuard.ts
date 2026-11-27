@@ -157,6 +157,21 @@ export function validatePathGuard(input: PathGuardInput): PathGuardCheckResult {
     };
   }
 
+  // 8b. Nested parent/child path containment check
+  if (
+    normSource === normTarget ||
+    normTarget.startsWith(normSource + '\\') ||
+    normSource.startsWith(normTarget + '\\')
+  ) {
+    return {
+      allowed: false,
+      code: 'BLOCKED_NESTED_PATH',
+      message:
+        'Target path cannot be equal to or nested inside the source directory (or vice versa).',
+      ruleMatched: 'PreFlight.NoNestedContainment',
+    };
+  }
+
   // 9. Same volume check
   const sourceDriveLetter = normSource.slice(0, 2);
   const targetDriveLetter = input.targetDrive.letter.toLowerCase();

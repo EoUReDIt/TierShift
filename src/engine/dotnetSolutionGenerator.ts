@@ -13,6 +13,7 @@ import junctionSweepRaw from '../TierShift.Core/Migration/JunctionSweepService.c
 import appDiscoveryRaw from '../TierShift.Core/Discovery/AppDiscoveryService.cs?raw';
 import attributionEngineRaw from '../TierShift.Core/Attribution/AttributionEngine.cs?raw';
 import capsuleServiceRaw from '../TierShift.Core/Capsules/CapsuleService.cs?raw';
+import inferenceSortingRaw from '../TierShift.Core/Sorting/InferenceSortingEngine.cs?raw';
 import ecosystemKbRaw from '../TierShift.Core/Rules/ecosystem_kb.json?raw';
 import appCsprojRaw from '../TierShift.App/TierShift.App.csproj?raw';
 import appManifestRaw from '../TierShift.App/app.manifest?raw';
@@ -23,6 +24,8 @@ import mainWindowXamlCsRaw from '../TierShift.App/MainWindow.xaml.cs?raw';
 import testsCsprojRaw from '../../tests/TierShift.Core.Tests/TierShift.Core.Tests.csproj?raw';
 import pathGuardTestsRaw from '../../tests/TierShift.Core.Tests/PathGuardTests.cs?raw';
 import junctionMoveTestsRaw from '../../tests/TierShift.Core.Tests/JunctionMoveServiceTests.cs?raw';
+import inferenceSortingTestsRaw from '../../tests/TierShift.Core.Tests/InferenceSortingEngineTests.cs?raw';
+import ciWorkflowRaw from '../../.github/workflows/ci.yml?raw';
 import releaseWorkflowRaw from '../../.github/workflows/release.yml?raw';
 import installerIssRaw from '../../installer/TierShift.iss?raw';
 
@@ -126,6 +129,13 @@ export const DOTNET_SOLUTION_FILES: SolutionFileEntry[] = [
     content: capsuleServiceRaw,
   },
   {
+    path: 'src/TierShift.Core/Sorting/InferenceSortingEngine.cs',
+    language: 'csharp',
+    description:
+      'v37 Evidence-Based Inference Sorting Engine implementing all 8 PoC rules, cluster & version reconstruction, stop-condition tracking, and 8-column Move Manifest CSV export.',
+    content: inferenceSortingRaw,
+  },
+  {
     path: 'src/TierShift.Core/Rules/ecosystem_kb.json',
     language: 'json',
     description:
@@ -191,6 +201,20 @@ export const DOTNET_SOLUTION_FILES: SolutionFileEntry[] = [
     description:
       'End-to-end xUnit tests covering real NTFS Junction move, rollback, orphaned junction sweep, and attribution scoring.',
     content: junctionMoveTestsRaw,
+  },
+  {
+    path: 'tests/TierShift.Core.Tests/InferenceSortingEngineTests.cs',
+    language: 'csharp',
+    description:
+      'xUnit tests validating all 8 v37 inference sorting rules, cluster convergence, stop condition, and Move Manifest CSV export.',
+    content: inferenceSortingTestsRaw,
+  },
+  {
+    path: '.github/workflows/ci.yml',
+    language: 'text',
+    description:
+      'Automated push/PR CI workflow validating .NET 8 xUnit tests, WinUI 3 x64 compilation, and TypeScript/Vite web builds.',
+    content: ciWorkflowRaw,
   },
   {
     path: '.github/workflows/release.yml',

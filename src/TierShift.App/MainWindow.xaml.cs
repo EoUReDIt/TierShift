@@ -7,6 +7,7 @@ using TierShift.Core.Discovery;
 using TierShift.Core.FileSystem;
 using TierShift.Core.Guardrails;
 using TierShift.Core.Migration;
+using TierShift.Core.Sorting;
 
 namespace TierShift.App;
 
@@ -71,6 +72,16 @@ public sealed class CapsuleRowViewModel
     public string SizeFormatted => MainWindow.FormatBytes(Source.ArchiveBytes);
 }
 
+public sealed class SortArtifactRowViewModel
+{
+    public required ClassifiedSortArtifact Source { get; init; }
+    public string FileName => Source.FileName;
+    public string DestinationFolder => Source.DestinationFolder;
+    public string MetaLine => $"{Source.Category} · {Source.SubCategory}{(Source.ClusterLabel != null ? $" · {Source.ClusterLabel}" : "")}";
+    public string ConfidenceText => $"{Source.Confidence} / 100";
+    public string DispositionText => $"{Source.Status} · {Source.MoveAction}";
+}
+
 public sealed partial class MainWindow : Window
 {
     private readonly SqliteLedger _ledger;
@@ -78,11 +89,13 @@ public sealed partial class MainWindow : Window
     private readonly JunctionSweepService _sweepService;
     private readonly AttributionEngine _attributionEngine;
     private readonly CapsuleService _capsuleService;
+    private readonly InferenceSortingEngine _sortingEngine = new();
 
     private IReadOnlyList<VolumeInfo> _volumes = [];
     private IReadOnlyList<InstalledAppInfo> _allApps = [];
     private IReadOnlyList<FolderAttributionInfo> _allFolders = [];
     private IReadOnlyList<MoveLedgerRecord> _ledgerMoves = [];
+    private IReadOnlyList<ClassifiedSortArtifact> _sortArtifacts = [];
     private string _selectedTargetDrive = "D:";
     private bool _isBusy;
 
@@ -98,6 +111,11 @@ public sealed partial class MainWindow : Window
             AppWindow.Resize(new Windows.Graphics.SizeInt32(1240, 820));
         }
         catch { }
+
+        var oneDrive = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "OneDrive");
+        SorterPathBox.Text = Directory.Exists(oneDrive)
+            ? oneDrive
+            : Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
 
         var dataDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
@@ -161,7 +179,7 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        int preferredIndex = 0;
+        int preferredIndex = -1;
         for (int i = 0; i < targetCandidates.Count; i++)
         {
             var vol = targetCandidates[i];
@@ -170,9 +188,12 @@ public sealed partial class MainWindow : Window
                 Content = $"{vol.DriveLetter} {vol.VolumeLabel} ({vol.FileSystem} · {FormatBytes(vol.FreeBytes)} free)",
                 Tag = vol.DriveLetter
             });
-            if (vol.IsNtfsFixed && preferredIndex == 0)
+            if (vol.IsNtfsFixed && preferredIndex < 0)
                 preferredIndex = i;
         }
+
+        if (preferredIndex < 0)
+            preferredIndex = 0;
 
         TargetDriveCombo.SelectedIndex = preferredIndex;
         _selectedTargetDrive = targetCandidates[preferredIndex].DriveLetter;
@@ -197,19 +218,21 @@ public sealed partial class MainWindow : Window
 
     private void SelectSection(string tag)
     {
-        if (DashboardPanel == null || AppsPanel == null || AppDataPanel == null || LedgerPanel == null || PageTitleText == null)
+        if (DashboardPanel == null || AppsPanel == null || AppDataPanel == null || SorterPanel == null || LedgerPanel == null || PageTitleText == null)
             return;
 
         DashboardPanel.Visibility = tag == "dashboard" ? Visibility.Visible : Visibility.Collapsed;
         AppsPanel.Visibility = tag == "apps" ? Visibility.Visible : Visibility.Collapsed;
         AppDataPanel.Visibility = tag == "appdata" ? Visibility.Visible : Visibility.Collapsed;
+        SorterPanel.Visibility = tag == "sorter" ? Visibility.Visible : Visibility.Collapsed;
         LedgerPanel.Visibility = tag == "ledger" ? Visibility.Visible : Visibility.Collapsed;
 
         foreach (var menuItem in NavView.MenuItems.OfType<NavigationViewItem>())
         {
             if (menuItem.Tag is string t && t == tag)
             {
-                NavView.SelectedItem = menuItem;
+                if (!ReferenceEquals(NavView.SelectedItem, menuItem))
+                    NavView.SelectedItem = menuItem;
                 break;
             }
         }
@@ -218,6 +241,7 @@ public sealed partial class MainWindow : Window
         {
             "apps" => ("Apps & Advisor", "Installed Win32 and MSIX apps sorted by footprint. Relocate safely without breaking Windows Uninstall."),
             "appdata" => ("AppData & Mystery Inspector", "5-Stage heuristic attribution for Local, LocalLow, Roaming, and ProgramData folders."),
+            "sorter" => ("Inference Sorting Engine (v37)", "Evidence-based OneDrive & archive reconstruction. Verified -> MOVE, Probable -> Staging-Probable, Unknown -> Unsorted."),
             "ledger" => ("Capsules & Ledger", "Active NTFS junctions with 1-click rollback, orphaned junction sweep, and portable .tiercapsule backups."),
             _ => ("Dashboard", "Inspect NVMe vs. cold storage capacity, scan apps, and safely relocate via NTFS junctions.")
         };
@@ -225,6 +249,7 @@ public sealed partial class MainWindow : Window
 
     private void JumpToApps_Click(object sender, RoutedEventArgs e) => SelectSection("apps");
     private void JumpToAppData_Click(object sender, RoutedEventArgs e) => SelectSection("appdata");
+    private void JumpToSorter_Click(object sender, RoutedEventArgs e) => SelectSection("sorter");
     private void JumpToLedger_Click(object sender, RoutedEventArgs e) => SelectSection("ledger");
     private void RefreshDrivesButton_Click(object sender, RoutedEventArgs e) => RefreshVolumes();
 
@@ -725,6 +750,138 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private async void ScanSorterButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isBusy) return;
+        var rootPath = SorterPathBox.Text?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(rootPath) || !Directory.Exists(rootPath))
+        {
+            SetStatus(InfoBarSeverity.Warning, "Invalid Folder", "Specify an existing directory path (e.g. OneDrive or Documents) to run evidence-based sorting.");
+            return;
+        }
+
+        try
+        {
+            SetBusy(true, "Running v37 Inference Sorter", $"Scanning '{rootPath}' for explicit, subject, cluster, temporal, and version signals...");
+            var report = await _sortingEngine.ScanAndClassifyDirectoryAsync(rootPath);
+            _sortArtifacts = report.Artifacts;
+            ApplySorterFilter();
+
+            int verified = _sortArtifacts.Count(a => a.Status == ClassificationStatus.Verified);
+            int probable = _sortArtifacts.Count(a => a.Status == ClassificationStatus.Probable);
+            int unknown = _sortArtifacts.Count(a => a.Status == ClassificationStatus.Unknown);
+
+            SorterSummaryText.Text = $"Scanned {_sortArtifacts.Count:N0} files · Verified (MOVE): {verified} · Probable (REVIEW): {probable} · Unknown (HOLD): {unknown}";
+            SetStatus(InfoBarSeverity.Success, "Inference Classification Complete", SorterSummaryText.Text);
+        }
+        catch (Exception ex)
+        {
+            SetStatus(InfoBarSeverity.Error, "Inference Scan Failed", ex.Message);
+        }
+        finally
+        {
+            SetBusy(false);
+        }
+    }
+
+    private void SorterFilterCombo_SelectionChanged(object sender, SelectionChangedEventArgs e) => ApplySorterFilter();
+
+    private void ApplySorterFilter()
+    {
+        if (SorterListView == null) return;
+        var mode = (SorterFilterCombo?.SelectedItem as ComboBoxItem)?.Tag as string ?? "All";
+
+        var filtered = _sortArtifacts
+            .Where(a => mode == "All" || a.Status.ToString().Equals(mode, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(a => a.Confidence)
+            .Select(a => new SortArtifactRowViewModel { Source = a })
+            .ToList();
+
+        SorterListView.ItemsSource = filtered;
+    }
+
+    private async void InspectSortArtifactButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { Tag: SortArtifactRowViewModel vm }) return;
+        var a = vm.Source;
+        var s = a.Signals;
+        var body = $"Source: {a.SourceFile}\n" +
+                   $"Destination: {a.DestinationFolder}\n" +
+                   $"Category: {a.Category} / {a.SubCategory}\n" +
+                   (a.SecondaryClassification != null ? $"Secondary (Rule 4): {a.SecondaryClassification}\n" : string.Empty) +
+                   $"Confidence: {a.Confidence} / 100 ({a.Status} · {a.MoveAction})\n\n" +
+                   $"Formula Breakdown:\n" +
+                   $"  Explicit: +{s.ExplicitAssignment} | Subject: +{s.SubjectMatch} | Cluster: +{s.ClusterMatch}\n" +
+                   $"  Temporal: +{s.TemporalMatch} | Version: +{s.VersionMatch} | Contradiction: -{s.ContradictoryPenalty}\n\n" +
+                   "Applied PoC Rules:\n" +
+                   string.Join("\n", a.AppliedRules.Select(r => $"• {r}")) + "\n\n" +
+                   $"Notes:\n{a.Notes}";
+        await ShowMessageDialogAsync("v37 Inference Evidence", body);
+    }
+
+    private void ExportManifestButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_sortArtifacts.Count == 0)
+        {
+            SetStatus(InfoBarSeverity.Warning, "No Classification Results", "Run 'Scan & Classify' before exporting the Move Manifest CSV.");
+            return;
+        }
+
+        try
+        {
+            var baseDir = !string.IsNullOrWhiteSpace(_selectedTargetDrive)
+                ? Path.Combine(_selectedTargetDrive + "\\", "TierShift", "Manifests")
+                : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "TierShift");
+            Directory.CreateDirectory(baseDir);
+
+            var outPath = Path.Combine(baseDir, $"MoveManifest_v37_{DateTime.Now:yyyyMMdd_HHmmss}.csv");
+            var csv = InferenceSortingEngine.ExportMoveManifestCsv(_sortArtifacts);
+            File.WriteAllText(outPath, csv);
+
+            SetStatus(InfoBarSeverity.Success, "Move Manifest Exported", $"Saved 8-column v37 CSV manifest to {outPath}.");
+        }
+        catch (Exception ex)
+        {
+            SetStatus(InfoBarSeverity.Error, "CSV Export Failed", ex.Message);
+        }
+    }
+
+    private async void ExecuteVerifiedMovesButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isBusy) return;
+        var verifiedCount = _sortArtifacts.Count(a => a.MoveAction == MoveAction.MOVE);
+        if (verifiedCount == 0)
+        {
+            SetStatus(InfoBarSeverity.Warning, "No Verified Files", "No Verified (MOVE) artifacts are queued. Classification confidence always overrides automation.");
+            return;
+        }
+
+        var rootBase = !string.IsNullOrWhiteSpace(_selectedTargetDrive)
+            ? Path.Combine(_selectedTargetDrive + "\\", "TierShift")
+            : SorterPathBox.Text?.Trim() ?? Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+
+        if (!await ConfirmDialogAsync(
+            "Execute Verified Moves Only?",
+            $"Move {verifiedCount} Verified (Confidence 90–100) artifact(s) into '{rootBase}\\Verified Inventory'?\n\nProbable, Unknown, and Historical items will NOT be moved automatically.",
+            "Move Verified Files"))
+            return;
+
+        try
+        {
+            SetBusy(true, "Organizing Verified Inventory", $"Moving {verifiedCount} verified artifact(s) into '{rootBase}\\Verified Inventory'...");
+            int moved = await Task.Run(() => InferenceSortingEngine.ExecuteVerifiedMoves(_sortArtifacts, rootBase));
+            SetStatus(InfoBarSeverity.Success, "Verified Moves Complete", $"Moved {moved} verified file(s) into '{rootBase}\\Verified Inventory'.");
+        }
+        catch (Exception ex)
+        {
+            SetStatus(InfoBarSeverity.Error, "Verified Move Failed", ex.Message);
+        }
+        finally
+        {
+            SetBusy(false);
+        }
+    }
+
     private bool EnsureTargetDriveSelected()
     {
         if (!string.IsNullOrWhiteSpace(_selectedTargetDrive)) return true;
@@ -751,6 +908,13 @@ public sealed partial class MainWindow : Window
 
     private async Task ShowMessageDialogAsync(string title, string content)
     {
+        var xamlRoot = Content?.XamlRoot;
+        if (xamlRoot == null)
+        {
+            SetStatus(InfoBarSeverity.Informational, title, content);
+            return;
+        }
+
         var dlg = new ContentDialog
         {
             Title = title,
@@ -760,13 +924,17 @@ public sealed partial class MainWindow : Window
                 Content = new TextBlock { Text = content, TextWrapping = TextWrapping.Wrap }
             },
             CloseButtonText = "Close",
-            XamlRoot = Content.XamlRoot
+            XamlRoot = xamlRoot
         };
         await dlg.ShowAsync();
     }
 
     private async Task<bool> ConfirmDialogAsync(string title, string content, string primaryButtonText)
     {
+        var xamlRoot = Content?.XamlRoot;
+        if (xamlRoot == null)
+            return false;
+
         var dlg = new ContentDialog
         {
             Title = title,
@@ -774,7 +942,7 @@ public sealed partial class MainWindow : Window
             PrimaryButtonText = primaryButtonText,
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Primary,
-            XamlRoot = Content.XamlRoot
+            XamlRoot = xamlRoot
         };
         return await dlg.ShowAsync() == ContentDialogResult.Primary;
     }

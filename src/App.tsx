@@ -9,6 +9,7 @@ import {
   FolderSearch,
   HardDrive,
   LayoutGrid,
+  ListFilter,
   Menu,
   Moon,
   ShieldCheck,
@@ -36,6 +37,7 @@ import { DashboardView, NavSection } from './components/DashboardView';
 import { AppsAdvisorView } from './components/AppsAdvisorView';
 import { AppDataInspectorView } from './components/AppDataInspectorView';
 import { CapsulesLedgerView } from './components/CapsulesLedgerView';
+import { InferenceSorterView } from './components/InferenceSorterView';
 import { WorkbenchView } from './components/WorkbenchView';
 import {
   MoveExecutionModal,
@@ -642,6 +644,7 @@ export default function App() {
     { id: 'dashboard', label: 'Dashboard', icon: LayoutGrid },
     { id: 'apps', label: 'Apps & Advisor', icon: HardDrive },
     { id: 'appdata', label: 'AppData & Inspector', icon: FolderSearch },
+    { id: 'sorter', label: 'Inference Sorter', icon: ListFilter },
     { id: 'ledger', label: 'Capsules & Ledger', icon: Archive },
   ];
 
@@ -649,6 +652,7 @@ export default function App() {
     dashboard: 'Dashboard',
     apps: 'Apps & Advisor',
     appdata: 'AppData & Mystery Inspector',
+    sorter: 'Inference Sorting Engine (v37)',
     ledger: 'Capsules & Ledger',
     workbench: 'PathGuard & .NET 8 Source',
   };
@@ -845,6 +849,10 @@ export default function App() {
               onOffloadFolder={handleStartFolderOffload}
               onDeleteOrphan={handleDeleteOrphan}
             />
+          )}
+
+          {activeNav === 'sorter' && (
+            <InferenceSorterView onNotify={showToast} />
           )}
 
           {activeNav === 'ledger' && (

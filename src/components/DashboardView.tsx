@@ -19,6 +19,7 @@ export type NavSection =
   | 'dashboard'
   | 'apps'
   | 'appdata'
+  | 'sorter'
   | 'ledger'
   | 'workbench';
 
