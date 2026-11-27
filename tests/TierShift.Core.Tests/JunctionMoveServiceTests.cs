@@ -1,3 +1,4 @@
+using Microsoft.Data.Sqlite;
 using TierShift.Core.Attribution;
 using TierShift.Core.Data;
 using TierShift.Core.FileSystem;
@@ -55,6 +56,7 @@ public class JunctionMoveServiceTests
         }
         finally
         {
+            SqliteConnection.ClearAllPools();
             if (NtfsJunction.IsJunction(source))
                 NtfsJunction.Delete(source);
             if (Directory.Exists(root))
@@ -102,6 +104,7 @@ public class JunctionMoveServiceTests
         }
         finally
         {
+            SqliteConnection.ClearAllPools();
             if (NtfsJunction.IsJunction(source))
                 NtfsJunction.Delete(source);
             if (Directory.Exists(root))

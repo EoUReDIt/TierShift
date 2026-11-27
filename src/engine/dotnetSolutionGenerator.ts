@@ -1,6 +1,7 @@
 import { ZipEntryInput } from './zipBuilder';
 
 import slnRaw from '../../TierShift.sln?raw';
+import globalJsonRaw from '../../global.json?raw';
 import coreCsprojRaw from '../TierShift.Core/TierShift.Core.csproj?raw';
 import pathGuardRaw from '../TierShift.Core/Guardrails/PathGuard.cs?raw';
 import ntfsJunctionRaw from '../TierShift.Core/FileSystem/NtfsJunction.cs?raw';
@@ -39,6 +40,13 @@ export const DOTNET_SOLUTION_FILES: SolutionFileEntry[] = [
     description:
       'Visual Studio / .NET 8 solution file separating Core, WinUI 3 App, and xUnit Tests.',
     content: slnRaw,
+  },
+  {
+    path: 'global.json',
+    language: 'json',
+    description:
+      'Pins the .NET 8.0.x SDK (latestFeature rollForward) so CI and local builds never drift to newer preview/major SDKs.',
+    content: globalJsonRaw,
   },
   {
     path: 'src/TierShift.Core/TierShift.Core.csproj',

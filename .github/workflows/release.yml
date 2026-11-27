@@ -34,6 +34,7 @@ jobs:
     env:
       VERSION: ${{ inputs.version }}
       ALLOW_OVERWRITE: ${{ inputs.allow_overwrite }}
+      RELEASE_NOTES: ${{ inputs.release_notes }}
 
     steps:
       - name: Checkout repository
@@ -61,6 +62,16 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      - name: Verify pinned .NET 8 SDK
+        shell: pwsh
+        run: |
+          $sdk = (dotnet --version).Trim()
+          Write-Host "Active .NET SDK: $sdk"
+          if ($sdk -notmatch '^8\.0\.') {
+            Write-Error "Expected .NET 8.0.x SDK via global.json, but found '$sdk'."
+            exit 1
+          }
+
       - name: Restore NuGet dependencies
         run: dotnet restore TierShift.sln -r win-x64
 
@@ -83,6 +94,12 @@ jobs:
             -p:FileVersion="$ver.0" `
             -o artifacts/publish/win-x64
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $exePath = "artifacts/publish/win-x64/TierShift.App.exe"
+          if (-not (Test-Path $exePath)) {
+            Write-Error "Publish completed but expected executable was not found at '$exePath'."
+            exit 1
+          }
 
       - name: Build recommended Inno Setup installer (TierShift-Setup-x64.exe)
         shell: pwsh
@@ -132,7 +149,7 @@ jobs:
             -DestinationPath "artifacts/release/TierShift-$env:VERSION-win-x64-portable.zip" `
             -Force
 
-      - name: Generate SHA-256 checksums
+      - name: Generate SHA-256 checksums & release notes body
         shell: pwsh
         run: |
           $files = Get-ChildItem -Path artifacts/release -File | Where-Object { $_.Name -ne 'SHA256SUMS.txt' } | Sort-Object Name
@@ -142,6 +159,40 @@ jobs:
           }
           $lines | Out-File -FilePath artifacts/release/SHA256SUMS.txt -Encoding utf8NoBOM
 
+          $body = @(
+            $env:RELEASE_NOTES
+            ''
+            '### Recommended Installer'
+            ('- **Windows Installer (`TierShift-Setup-' + $env:VERSION + '-x64.exe`)**: Inno Setup installer tailored for Unpackaged WinUI 3 with `requireAdministrator` elevation and native Windows Settings > Uninstall integration.')
+            ('- **Portable Archive (`TierShift-' + $env:VERSION + '-win-x64-portable.zip`)**: Self-contained x64 binary package.')
+            '- **Checksums (`SHA256SUMS.txt`)**: SHA-256 verification hashes for all artifacts.'
+          ) -join "`n"
+          $body | Out-File -FilePath artifacts/RELEASE_NOTES.md -Encoding utf8NoBOM
+
+      - name: Upload workflow build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: TierShift-v${{ inputs.version }}-win-x64
+          path: |
+            artifacts/release/TierShift-Setup-${{ inputs.version }}-x64.exe
+            artifacts/release/TierShift-${{ inputs.version }}-win-x64-portable.zip
+            artifacts/release/SHA256SUMS.txt
+          if-no-files-found: error
+
+      - name: Sync existing Git tag when allow_overwrite is enabled
+        if: ${{ inputs.allow_overwrite }}
+        shell: pwsh
+        run: |
+          $tag = "v$env:VERSION"
+          $existing = git ls-remote --tags origin "refs/tags/$tag"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not [string]::IsNullOrWhiteSpace($existing)) {
+            git tag -f $tag HEAD
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            git push origin "refs/tags/$tag" --force
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -149,13 +200,7 @@ jobs:
           name: TierShift v${{ inputs.version }}
           prerelease: ${{ inputs.prerelease }}
           generate_release_notes: true
-          body: |
-            ${{ inputs.release_notes }}
-
-            ### Recommended Installer
-            - **Windows Installer (`TierShift-Setup-${{ inputs.version }}-x64.exe`)**: Inno Setup installer tailored for Unpackaged WinUI 3 with `requireAdministrator` elevation and native Windows Settings > Uninstall integration.
-            - **Portable Archive (`TierShift-${{ inputs.version }}-win-x64-portable.zip`)**: Self-contained x64 binary package.
-            - **Checksums (`SHA256SUMS.txt`)**: SHA-256 verification hashes for all artifacts.
+          body_path: artifacts/RELEASE_NOTES.md
           files: |
             artifacts/release/TierShift-Setup-${{ inputs.version }}-x64.exe
             artifacts/release/TierShift-${{ inputs.version }}-win-x64-portable.zip
