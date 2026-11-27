@@ -1,0 +1,8 @@
+{
+  "name": "TierShift",
+  "description": "Windows storage tiering, safe app relocation, NTFS junction management, portable state capsules, and 5-stage mystery folder attribution manager.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

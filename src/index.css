@@ -1,0 +1,69 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root {
+    --font-display: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-sans: 'Public Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+
+  html {
+    font-family: var(--font-sans);
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  h1, h2, h3, .font-display {
+    font-family: var(--font-display);
+  }
+
+  code, pre, .font-mono {
+    font-family: var(--font-mono);
+  }
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Subtle Mica surface gradient inspired by Windows 11 WinUI 3 */
+.mica-canvas {
+  background-color: #F3F5F8;
+  background-image:
+    radial-gradient(ellipse 90% 60% at 15% 0%, rgba(0, 103, 192, 0.045), transparent 65%),
+    radial-gradient(ellipse 70% 50% at 88% 100%, rgba(15, 23, 42, 0.03), transparent 60%);
+}
+
+.dark .mica-canvas {
+  background-color: #111317;
+  background-image:
+    radial-gradient(ellipse 90% 60% at 15% 0%, rgba(96, 205, 255, 0.055), transparent 65%),
+    radial-gradient(ellipse 70% 50% at 88% 100%, rgba(148, 163, 184, 0.035), transparent 60%);
+}
+
+/* Clean scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.25);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.42);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
