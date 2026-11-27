@@ -1,0 +1,154 @@
+{
+  "schemaVersion": "1.0",
+  "protectedWhitelist": [
+    "EBWebView",
+    "NVIDIA\\DXCache",
+    "NVIDIA\\GLCache",
+    "AMD\\DxCache",
+    "D3DSCache",
+    "Microsoft\\Windows",
+    "Microsoft\\Edge",
+    "Microsoft\\CLR",
+    "Temp",
+    "CrashDumps",
+    "IconCache"
+  ],
+  "rules": [
+    {
+      "pattern": "SquirrelTemp",
+      "matchType": "exact",
+      "appName": "Electron / Squirrel Updater Staging",
+      "publisher": "Squirrel.Windows Ecosystem",
+      "category": "Updater Cache",
+      "notes": "Temporary installer staging directory created by Discord, Slack, Postman, and VS Code Squirrel updaters."
+    },
+    {
+      "pattern": "Valve",
+      "matchType": "exact",
+      "appName": "Steam Client",
+      "publisher": "Valve Corporation",
+      "category": "Game Platform",
+      "notes": "Steam shader pre-caching and overlay state."
+    },
+    {
+      "pattern": "Mojang",
+      "matchType": "exact",
+      "appName": "Minecraft Launcher",
+      "publisher": "Mojang Studios",
+      "category": "Game Runtime",
+      "notes": "Minecraft asset packs, saves, and runtime worlds."
+    },
+    {
+      "pattern": ".minecraft",
+      "matchType": "exact",
+      "appName": "Minecraft Java Edition",
+      "publisher": "Mojang Studios",
+      "category": "Game Runtime",
+      "notes": "Modpacks, resource packs, and world saves inside Roaming."
+    },
+    {
+      "pattern": "UnrealEngine",
+      "matchType": "prefix",
+      "appName": "Unreal Engine DerivedDataCache",
+      "publisher": "Epic Games, Inc.",
+      "category": "3D Engine Cache",
+      "notes": "Compiled shader and asset DerivedDataCache (frequently exceeds 15-40 GB). Safe to offload via NTFS Junction."
+    },
+    {
+      "pattern": "Blackmagic Design",
+      "matchType": "contains",
+      "appName": "DaVinci Resolve Studio",
+      "publisher": "Blackmagic Design Pty Ltd",
+      "category": "Video Production",
+      "notes": "Proxy media, render cache, and Fairlight audio plugins."
+    },
+    {
+      "pattern": "com.blackmagic.resolve",
+      "matchType": "contains",
+      "appName": "DaVinci Resolve Studio",
+      "publisher": "Blackmagic Design Pty Ltd",
+      "category": "Video Production",
+      "notes": "Reverse-DNS updater cache for DaVinci Resolve."
+    },
+    {
+      "pattern": "JetBrains",
+      "matchType": "prefix",
+      "appName": "JetBrains Toolbox & IDEs",
+      "publisher": "JetBrains s.r.o.",
+      "category": "Developer Tools",
+      "notes": "IDE indexes, Rider/IntelliJ caches, and downloaded toolchain runtimes."
+    },
+    {
+      "pattern": "Blender Foundation",
+      "matchType": "exact",
+      "appName": "Blender 4.2 LTS",
+      "publisher": "Blender Foundation",
+      "category": "3D Modeling",
+      "notes": "Cycles Optix/HIP kernels, add-ons, and asset libraries."
+    },
+    {
+      "pattern": "AudioStudioPro",
+      "matchType": "contains",
+      "appName": "AudioStudio Pro DAW",
+      "publisher": "Vanguard Audio Labs",
+      "category": "Audio Production",
+      "notes": "VST3 sample cache and waveform peak files."
+    },
+    {
+      "pattern": "LegacyCAD",
+      "matchType": "contains",
+      "appName": "LegacyCAD Workstation 2022",
+      "publisher": "MetricDraft Systems",
+      "category": "CAD / Engineering",
+      "notes": "Part library snapshots and parametric render tiles."
+    },
+    {
+      "pattern": "Docker",
+      "matchType": "exact",
+      "appName": "Docker Desktop",
+      "publisher": "Docker Inc.",
+      "category": "Containers",
+      "notes": "WSL2 ext4.vhdx virtual disk and container layer storage."
+    },
+    {
+      "pattern": "Spotify",
+      "matchType": "exact",
+      "appName": "Spotify Desktop",
+      "publisher": "Spotify AB",
+      "category": "Media Streaming",
+      "notes": "Offline audio track cache in LocalAppData\\Spotify\\Storage."
+    },
+    {
+      "pattern": "Adobe",
+      "matchType": "exact",
+      "appName": "Adobe Creative Cloud",
+      "publisher": "Adobe Inc.",
+      "category": "Creative Suite",
+      "notes": "Common media cache files, peak files, and font caches."
+    },
+    {
+      "pattern": "Obsidian",
+      "matchType": "contains",
+      "appName": "Obsidian Notes",
+      "publisher": "Dynalist Inc.",
+      "category": "Knowledge Base",
+      "notes": "Chromium GPU cache and plugin state."
+    },
+    {
+      "pattern": "EpicGamesLauncher",
+      "matchType": "exact",
+      "appName": "Epic Games Launcher",
+      "publisher": "Epic Games, Inc.",
+      "category": "Game Platform",
+      "notes": "VaultCache downloaded assets and Unreal marketplace packages."
+    },
+    {
+      "pattern": "{A91F3C20-4B18-4D91-9E02-71F0C842D301}",
+      "matchType": "exact",
+      "appName": "VortexSynth Sample Engine (Legacy)",
+      "publisher": "PulseWave DSP",
+      "category": "Audio Plugin",
+      "notes": "MSI GUID folder left behind by older InstallShield installers."
+    }
+  ]
+}

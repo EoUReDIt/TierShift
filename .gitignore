@@ -6,3 +6,10 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# .NET
+bin/
+obj/
+artifacts/
+*.user
+.vs/
