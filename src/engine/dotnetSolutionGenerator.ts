@@ -4,8 +4,15 @@ import slnRaw from '../../TierShift.sln?raw';
 import coreCsprojRaw from '../TierShift.Core/TierShift.Core.csproj?raw';
 import nativeMethodsRaw from '../TierShift.Core/NativeMethods.txt?raw';
 import pathGuardRaw from '../TierShift.Core/Guardrails/PathGuard.cs?raw';
+import ntfsJunctionRaw from '../TierShift.Core/FileSystem/NtfsJunction.cs?raw';
+import verifiedCopyRaw from '../TierShift.Core/FileSystem/VerifiedCopy.cs?raw';
+import restartManagerRaw from '../TierShift.Core/FileSystem/RestartManagerService.cs?raw';
 import sqliteLedgerRaw from '../TierShift.Core/Data/SqliteLedger.cs?raw';
 import junctionMoveRaw from '../TierShift.Core/Migration/JunctionMoveService.cs?raw';
+import junctionSweepRaw from '../TierShift.Core/Migration/JunctionSweepService.cs?raw';
+import appDiscoveryRaw from '../TierShift.Core/Discovery/AppDiscoveryService.cs?raw';
+import attributionEngineRaw from '../TierShift.Core/Attribution/AttributionEngine.cs?raw';
+import capsuleServiceRaw from '../TierShift.Core/Capsules/CapsuleService.cs?raw';
 import ecosystemKbRaw from '../TierShift.Core/Rules/ecosystem_kb.json?raw';
 import appCsprojRaw from '../TierShift.App/TierShift.App.csproj?raw';
 import appManifestRaw from '../TierShift.App/app.manifest?raw';
@@ -45,7 +52,7 @@ export const DOTNET_SOLUTION_FILES: SolutionFileEntry[] = [
     path: 'src/TierShift.Core/NativeMethods.txt',
     language: 'text',
     description:
-      'CsWin32 source-generated Win32 P/Invoke declarations for NTFS Reparse Points & Restart Manager.',
+      'CsWin32 Win32 P/Invoke declarations for NTFS Reparse Points & Restart Manager.',
     content: nativeMethodsRaw,
   },
   {
@@ -56,18 +63,67 @@ export const DOTNET_SOLUTION_FILES: SolutionFileEntry[] = [
     content: pathGuardRaw,
   },
   {
+    path: 'src/TierShift.Core/FileSystem/NtfsJunction.cs',
+    language: 'csharp',
+    description:
+      'Win32 NTFS Directory Junction creator, deleter, and GetFinalPathNameByHandleW verifier.',
+    content: ntfsJunctionRaw,
+  },
+  {
+    path: 'src/TierShift.Core/FileSystem/VerifiedCopy.cs',
+    language: 'csharp',
+    description:
+      'Recursive timestamp-preserving copy engine with file-count & byte-total integrity verification.',
+    content: verifiedCopyRaw,
+  },
+  {
+    path: 'src/TierShift.Core/FileSystem/RestartManagerService.cs',
+    language: 'csharp',
+    description:
+      'Windows Restart Manager lock detection and graceful user-app shutdown service.',
+    content: restartManagerRaw,
+  },
+  {
     path: 'src/TierShift.Core/Data/SqliteLedger.cs',
     language: 'csharp',
     description:
-      'SQLite initializer for MoveLedger, TransactionJournal, and AttributionCache.',
+      'SQLite repository for MoveLedger, TransactionJournal, and AttributionCache.',
     content: sqliteLedgerRaw,
   },
   {
     path: 'src/TierShift.Core/Migration/JunctionMoveService.cs',
     language: 'csharp',
     description:
-      'Atomic Junction-Anchored Move state machine with PathGuard validation, fail-safe stubs, and rollback.',
+      'Atomic Junction-Anchored Move state machine with Restart Manager checks, verified copy, NTFS swap, and 1-click RollbackAsync.',
     content: junctionMoveRaw,
+  },
+  {
+    path: 'src/TierShift.Core/Migration/JunctionSweepService.cs',
+    language: 'csharp',
+    description:
+      'Post-uninstall orphaned target directory sweeper for active MoveLedger junctions.',
+    content: junctionSweepRaw,
+  },
+  {
+    path: 'src/TierShift.Core/Discovery/AppDiscoveryService.cs',
+    language: 'csharp',
+    description:
+      'Local NTFS volume reader, ARP Uninstall registry scanner, MSIX PackageManager mover, and native uninstaller launcher.',
+    content: appDiscoveryRaw,
+  },
+  {
+    path: 'src/TierShift.Core/Attribution/AttributionEngine.cs',
+    language: 'csharp',
+    description:
+      '5-Stage Mystery Folder Attribution Engine with ecosystem_kb.json, Jaro-Winkler similarity, and PE/Authenticode inspection.',
+    content: attributionEngineRaw,
+  },
+  {
+    path: 'src/TierShift.Core/Capsules/CapsuleService.cs',
+    language: 'csharp',
+    description:
+      'Portable .tiercapsule ZIP + .reg exporter and Restore Redirected NTFS junction restorer.',
+    content: capsuleServiceRaw,
   },
   {
     path: 'src/TierShift.Core/Rules/ecosystem_kb.json',
@@ -106,14 +162,14 @@ export const DOTNET_SOLUTION_FILES: SolutionFileEntry[] = [
     path: 'src/TierShift.App/MainWindow.xaml',
     language: 'xml',
     description:
-      'Fluent WinUI 3 shell with MicaBackdrop, custom titlebar drag region, and left NavigationView.',
+      'Full interactive WinUI 3 Fluent UI with MicaBackdrop, NavigationView, Dashboard, Apps & Advisor, AppData Inspector, and Capsules & Ledger.',
     content: mainWindowXamlRaw,
   },
   {
     path: 'src/TierShift.App/MainWindow.xaml.cs',
     language: 'csharp',
     description:
-      'MainWindow code-behind configuring custom titlebar extension and initializing the SQLite MoveLedger.',
+      'MainWindow code-behind connecting all 4 WinUI 3 screens to TierShift.Core engines.',
     content: mainWindowXamlCsRaw,
   },
   {
@@ -133,7 +189,7 @@ export const DOTNET_SOLUTION_FILES: SolutionFileEntry[] = [
     path: 'tests/TierShift.Core.Tests/JunctionMoveServiceTests.cs',
     language: 'csharp',
     description:
-      'xUnit tests verifying fail-safe stubs throw without modifying source files or leaving backup folders.',
+      'End-to-end xUnit tests covering real NTFS Junction move, rollback, orphaned junction sweep, and attribution scoring.',
     content: junctionMoveTestsRaw,
   },
   {

@@ -1,4 +1,6 @@
+using System.Text.Json;
 using TierShift.Core.Data;
+using TierShift.Core.FileSystem;
 using TierShift.Core.Guardrails;
 
 namespace TierShift.Core.Migration;
@@ -11,6 +13,8 @@ public sealed class JunctionMoveService(SqliteLedger ledger)
         string sourcePath,
         string targetPath,
         long sourceSizeBytes,
+        IProgress<CopyProgress>? progress = null,
+        bool closeLockingApps = false,
         CancellationToken ct = default,
         bool allowSameVolumeForTesting = false)
     {
@@ -19,59 +23,158 @@ public sealed class JunctionMoveService(SqliteLedger ledger)
             targetPath,
             sourceSizeBytes,
             allowSameVolume: allowSameVolumeForTesting);
+
         if (!guard.Allowed)
             throw new InvalidOperationException($"PathGuard blocked relocation ({guard.Code}): {guard.Message}");
 
+        if (!Directory.Exists(sourcePath))
+            throw new DirectoryNotFoundException($"Source directory not found: {sourcePath}");
+
+        var fullSource = Path.GetFullPath(sourcePath).TrimEnd('\\');
+        var fullTarget = Path.GetFullPath(targetPath).TrimEnd('\\');
+
+        // 1. Lock Detection via Restart Manager
+        var locks = RestartManagerService.FindLockingProcesses(fullSource);
+        if (locks.Count > 0)
+        {
+            if (!closeLockingApps || locks.Any(l => !l.IsClosable))
+            {
+                var names = string.Join(", ", locks.Select(l => $"{l.AppName} (PID {l.Pid})"));
+                throw new IOException($"Directory is locked by running processes: {names}");
+            }
+
+            if (!RestartManagerService.TryShutdownClosableProcesses(fullSource))
+                throw new IOException("Unable to release all process locks on the source directory.");
+        }
+
         var moveId = Guid.NewGuid().ToString();
-        var backupPath = sourcePath.TrimEnd('\\') + ".tiershift_bak";
+        var backupPath = fullSource + ".tiershift_bak";
 
-        // 1. Copy & verify file count + byte total
-        await CopyDirectoryVerifiedAsync(sourcePath, targetPath, ct);
+        // 2. Verified Copy
+        var stats = await VerifiedCopy.CopyDirectoryVerifiedAsync(fullSource, fullTarget, progress, ct);
+        await ledger.AddJournalStepAsync(
+            moveId,
+            1,
+            "CopyDir",
+            JsonSerializer.Serialize(new { source = fullSource, target = fullTarget, files = stats.FileCount, bytes = stats.TotalBytes }),
+            completed: true,
+            ct);
 
-        // 2. Atomic swap: rename -> create NTFS junction -> verify -> delete backup
+        // 3. Atomic Swap: rename -> create NTFS junction -> verify -> delete backup
         var junctionCreated = false;
         try
         {
-            Directory.Move(sourcePath, backupPath);
-            Directory.CreateDirectory(sourcePath);
-            NtfsJunction.Create(sourcePath, targetPath);
+            Directory.Move(fullSource, backupPath);
+            Directory.CreateDirectory(fullSource);
+            NtfsJunction.Create(fullSource, fullTarget);
             junctionCreated = true;
 
-            if (!NtfsJunction.VerifyResolvesTo(sourcePath, targetPath))
-                throw new IOException("Junction verification failed via GetFinalPathNameByHandle.");
+            if (!NtfsJunction.VerifyResolvesTo(fullSource, fullTarget))
+                throw new IOException("Junction verification failed via GetFinalPathNameByHandleW.");
+
+            await ledger.AddJournalStepAsync(
+                moveId,
+                2,
+                "CreateJunction",
+                JsonSerializer.Serialize(new { junction = fullSource, target = fullTarget, reparseTag = "IO_REPARSE_TAG_MOUNT_POINT" }),
+                completed: true,
+                ct);
 
             Directory.Delete(backupPath, recursive: true);
+
+            await ledger.AddJournalStepAsync(
+                moveId,
+                3,
+                "DeleteSource",
+                JsonSerializer.Serialize(new { backupDeleted = backupPath }),
+                completed: true,
+                ct);
+
+            await ledger.InsertMoveAsync(
+                new MoveLedgerRecord(
+                    moveId,
+                    appDisplayName,
+                    moveType,
+                    fullSource,
+                    fullTarget,
+                    stats.TotalBytes,
+                    "Active",
+                    DateTime.UtcNow.ToString("O")),
+                ct);
+
             return moveId;
         }
         catch
         {
-            if (junctionCreated && Directory.Exists(sourcePath))
-                Directory.Delete(sourcePath, recursive: false);
-            if (Directory.Exists(backupPath) && !Directory.Exists(sourcePath))
-                Directory.Move(backupPath, sourcePath);
-            if (Directory.Exists(targetPath))
-                Directory.Delete(targetPath, recursive: true);
+            if (junctionCreated && Directory.Exists(fullSource))
+            {
+                try { NtfsJunction.Delete(fullSource); } catch { }
+            }
+            if (Directory.Exists(backupPath) && !Directory.Exists(fullSource))
+            {
+                try { Directory.Move(backupPath, fullSource); } catch { }
+            }
+            if (Directory.Exists(fullTarget))
+            {
+                try { Directory.Delete(fullTarget, recursive: true); } catch { }
+            }
             throw;
         }
     }
 
-    private static Task CopyDirectoryVerifiedAsync(string source, string target, CancellationToken ct)
+    /// <summary>
+    /// 1-Click Rollback: copies target files back to the original NVMe source path,
+    /// replaces the NTFS junction atomically, deletes the cold-tier copy, and marks RolledBack.
+    /// </summary>
+    public async Task RollbackAsync(
+        string moveId,
+        IProgress<CopyProgress>? progress = null,
+        CancellationToken ct = default)
     {
-        // TODO: recursive copy preserving timestamps & basic ACLs, then assert file count + total bytes.
-        // Throws until implemented: this runs before any source rename, so nothing is moved or deleted.
-        throw new NotImplementedException("Verified directory copy is not implemented yet.");
+        var record = await ledger.GetMoveByIdAsync(moveId, ct)
+            ?? throw new InvalidOperationException($"MoveLedger record not found: {moveId}");
+
+        if (!record.Status.Equals("Active", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException($"Move {moveId} cannot be rolled back from status '{record.Status}'.");
+
+        if (!Directory.Exists(record.TargetPath))
+            throw new DirectoryNotFoundException($"Cold-storage target no longer exists: {record.TargetPath}");
+
+        var fullSource = Path.GetFullPath(record.SourcePath).TrimEnd('\\');
+        var fullTarget = Path.GetFullPath(record.TargetPath).TrimEnd('\\');
+        var stagingPath = fullSource + ".tiershift_restore";
+
+        try
+        {
+            await VerifiedCopy.CopyDirectoryVerifiedAsync(fullTarget, stagingPath, progress, ct);
+
+            if (NtfsJunction.IsJunction(fullSource))
+                NtfsJunction.Delete(fullSource);
+            else if (Directory.Exists(fullSource))
+                Directory.Delete(fullSource, recursive: false);
+
+            Directory.Move(stagingPath, fullSource);
+
+            try { Directory.Delete(fullTarget, recursive: true); } catch { }
+
+            await ledger.UpdateMoveStatusAsync(moveId, "RolledBack", ct);
+        }
+        catch
+        {
+            if (Directory.Exists(stagingPath))
+            {
+                try { Directory.Delete(stagingPath, recursive: true); } catch { }
+            }
+            if (!Directory.Exists(fullSource) && Directory.Exists(fullTarget))
+            {
+                try
+                {
+                    Directory.CreateDirectory(fullSource);
+                    NtfsJunction.Create(fullSource, fullTarget);
+                }
+                catch { }
+            }
+            throw;
+        }
     }
-}
-
-public static class NtfsJunction
-{
-    public const uint IO_REPARSE_TAG_MOUNT_POINT = 0xA0000003;
-
-    // TODO: DeviceIoControl FSCTL_SET_REPARSE_POINT with a mount-point reparse buffer.
-    public static void Create(string junctionPath, string targetPath) =>
-        throw new NotImplementedException("NTFS junction creation is not implemented yet.");
-
-    // TODO: open the junction and compare GetFinalPathNameByHandleW against expectedTarget.
-    public static bool VerifyResolvesTo(string junctionPath, string expectedTarget) =>
-        throw new NotImplementedException("NTFS junction verification is not implemented yet.");
 }

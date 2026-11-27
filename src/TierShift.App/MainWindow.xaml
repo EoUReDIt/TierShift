@@ -10,23 +10,35 @@
 
     <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="32" />
+            <RowDefinition Height="36" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
+        <!-- Custom Fluent Title Bar -->
         <Grid x:Name="AppTitleBar" Grid.Row="0" Padding="16,0">
-            <TextBlock
-                Text="TierShift"
-                VerticalAlignment="Center"
-                Style="{StaticResource CaptionTextBlockStyle}" />
+            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                <FontIcon Glyph="&#xEDA2;" FontSize="14" />
+                <TextBlock
+                    Text="TierShift"
+                    VerticalAlignment="Center"
+                    Style="{StaticResource BodyStrongTextBlockStyle}" />
+                <TextBlock
+                    Text="Windows Storage Tiering &amp; Attribution Manager"
+                    VerticalAlignment="Center"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Style="{StaticResource CaptionTextBlockStyle}" />
+            </StackPanel>
         </Grid>
 
+        <!-- Fluent NavigationView Shell -->
         <NavigationView
             x:Name="NavView"
             Grid.Row="1"
             PaneDisplayMode="Left"
+            OpenPaneLength="236"
             IsSettingsVisible="False"
-            IsBackButtonVisible="Collapsed">
+            IsBackButtonVisible="Collapsed"
+            SelectionChanged="NavView_SelectionChanged">
             <NavigationView.MenuItems>
                 <NavigationViewItem Content="Dashboard" Tag="dashboard" IsSelected="True">
                     <NavigationViewItem.Icon>
@@ -50,10 +62,459 @@
                 </NavigationViewItem>
             </NavigationView.MenuItems>
 
-            <StackPanel Padding="32" Spacing="12">
-                <TextBlock Text="TierShift" Style="{StaticResource TitleTextBlockStyle}" />
-                <TextBlock x:Name="StatusText" TextWrapping="Wrap" />
-            </StackPanel>
+            <Grid Padding="24,16,24,24" RowSpacing="14">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <!-- Global Action / Status Bar -->
+                <Grid Grid.Row="0" ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" Spacing="2">
+                        <TextBlock
+                            x:Name="PageTitleText"
+                            Text="Dashboard"
+                            Style="{StaticResource TitleTextBlockStyle}" />
+                        <TextBlock
+                            x:Name="PageSubtitleText"
+                            Text="Inspect NVMe vs. cold storage capacity, scan apps, and safely relocate via NTFS junctions."
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <TextBlock
+                            Text="Target Drive:"
+                            VerticalAlignment="Center"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        <ComboBox
+                            x:Name="TargetDriveCombo"
+                            MinWidth="180"
+                            SelectionChanged="TargetDriveCombo_SelectionChanged" />
+                    </StackPanel>
+
+                    <Button
+                        x:Name="ScanAllButton"
+                        Grid.Column="2"
+                        Content="Scan System"
+                        Style="{StaticResource AccentButtonStyle}"
+                        Click="ScanAllButton_Click" />
+                </Grid>
+
+                <!-- Live Status InfoBar & Progress -->
+                <StackPanel Grid.Row="1" Spacing="8">
+                    <InfoBar
+                        x:Name="StatusBanner"
+                        IsOpen="True"
+                        IsClosable="False"
+                        Severity="Informational"
+                        Title="Initializing"
+                        Message="Preparing TierShift SQLite ledger and reading local NTFS volumes..." />
+                    <ProgressBar
+                        x:Name="BusyProgressBar"
+                        IsIndeterminate="True"
+                        Visibility="Collapsed" />
+                </StackPanel>
+
+                <!-- VIEW 1: DASHBOARD -->
+                <ScrollViewer x:Name="DashboardPanel" Grid.Row="2" Visibility="Visible">
+                    <StackPanel Spacing="16" Padding="0,0,8,0">
+                        <!-- Summary KPI Strip -->
+                        <Grid ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <Border
+                                Grid.Column="0"
+                                Padding="16"
+                                CornerRadius="8"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1">
+                                <StackPanel Spacing="4">
+                                    <TextBlock Text="Dormant Apps (90d+)" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{StaticResource CaptionTextBlockStyle}" />
+                                    <TextBlock x:Name="KpiDormantValue" Text="0 B" Style="{StaticResource SubtitleTextBlockStyle}" />
+                                    <TextBlock x:Name="KpiDormantSub" Text="Click Scan System" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{StaticResource CaptionTextBlockStyle}" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border
+                                Grid.Column="1"
+                                Padding="16"
+                                CornerRadius="8"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1">
+                                <StackPanel Spacing="4">
+                                    <TextBlock Text="Orphaned Folders" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{StaticResource CaptionTextBlockStyle}" />
+                                    <TextBlock x:Name="KpiOrphanValue" Text="0 B" Style="{StaticResource SubtitleTextBlockStyle}" />
+                                    <TextBlock x:Name="KpiOrphanSub" Text="Uninstalled leftovers" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{StaticResource CaptionTextBlockStyle}" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border
+                                Grid.Column="2"
+                                Padding="16"
+                                CornerRadius="8"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1">
+                                <StackPanel Spacing="4">
+                                    <TextBlock Text="Offloadable AppData" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{StaticResource CaptionTextBlockStyle}" />
+                                    <TextBlock x:Name="KpiAppDataValue" Text="0 B" Style="{StaticResource SubtitleTextBlockStyle}" />
+                                    <TextBlock x:Name="KpiAppDataSub" Text="Safe junction targets" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{StaticResource CaptionTextBlockStyle}" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border
+                                Grid.Column="3"
+                                Padding="16"
+                                CornerRadius="8"
+                                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1">
+                                <StackPanel Spacing="4">
+                                    <TextBlock Text="Active Moves" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{StaticResource CaptionTextBlockStyle}" />
+                                    <TextBlock x:Name="KpiLedgerValue" Text="0" Style="{StaticResource SubtitleTextBlockStyle}" />
+                                    <TextBlock x:Name="KpiLedgerSub" Text="Tracked in SQLite ledger" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{StaticResource CaptionTextBlockStyle}" />
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+
+                        <!-- Storage Volumes Card -->
+                        <Border
+                            Padding="18"
+                            CornerRadius="8"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1">
+                            <StackPanel Spacing="12">
+                                <Grid>
+                                    <TextBlock Text="Local Storage Volumes" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                    <Button HorizontalAlignment="Right" Content="Refresh Drives" Click="RefreshDrivesButton_Click" />
+                                </Grid>
+
+                                <ItemsControl x:Name="VolumesItemsControl">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Spacing="6" Margin="0,0,0,14">
+                                                <Grid>
+                                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                                        <TextBlock Text="{Binding Title}" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                                        <TextBlock Text="{Binding Meta}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" Style="{StaticResource CaptionTextBlockStyle}" />
+                                                    </StackPanel>
+                                                    <TextBlock HorizontalAlignment="Right" Text="{Binding UsageSummary}" Style="{StaticResource CaptionTextBlockStyle}" />
+                                                </Grid>
+                                                <ProgressBar Minimum="0" Maximum="100" Value="{Binding UsedPercent}" Height="6" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Quick Actions Row -->
+                        <Border
+                            Padding="18"
+                            CornerRadius="8"
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="Quick Actions" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <Button Content="Browse Installed Apps" Click="JumpToApps_Click" />
+                                    <Button Content="Inspect AppData &amp; Orphans" Click="JumpToAppData_Click" />
+                                    <Button Content="Sweep Orphaned Junctions" Click="SweepJunctions_Click" />
+                                    <Button Content="Open Move Ledger &amp; Capsules" Click="JumpToLedger_Click" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- VIEW 2: APPS & ADVISOR -->
+                <Grid x:Name="AppsPanel" Grid.Row="2" Visibility="Collapsed" RowSpacing="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="10">
+                        <TextBox
+                            x:Name="AppsSearchBox"
+                            Width="300"
+                            PlaceholderText="Search app name, publisher, or install path..."
+                            TextChanged="AppsFilter_Changed" />
+                        <ComboBox
+                            x:Name="AppsFilterCombo"
+                            SelectedIndex="0"
+                            SelectionChanged="AppsFilter_Changed">
+                            <ComboBoxItem Content="All Apps" Tag="All" />
+                            <ComboBoxItem Content="On C: NVMe" Tag="OnC" />
+                            <ComboBoxItem Content="Offloaded" Tag="Offloaded" />
+                            <ComboBoxItem Content="Dormant (90d+)" Tag="Dormant" />
+                            <ComboBoxItem Content="MSIX / Store" Tag="MSIX" />
+                        </ComboBox>
+                        <Button Content="Rescan Apps" Click="RescanAppsButton_Click" />
+                    </StackPanel>
+
+                    <ListView
+                        x:Name="AppsListView"
+                        Grid.Row="1"
+                        SelectionMode="None">
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <Border
+                                    Margin="0,0,0,8"
+                                    Padding="14"
+                                    CornerRadius="8"
+                                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                    BorderThickness="1">
+                                    <Grid ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <StackPanel Grid.Column="0" Spacing="3">
+                                            <TextBlock Text="{Binding DisplayName}" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                            <TextBlock Text="{Binding Subtitle}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{StaticResource CaptionTextBlockStyle}" />
+                                            <TextBlock Text="{Binding InstallPath}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{StaticResource CaptionTextBlockStyle}" TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="0,0,8,0">
+                                            <TextBlock Text="{Binding SizeFormatted}" HorizontalAlignment="Right" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                            <TextBlock Text="{Binding StatusText}" HorizontalAlignment="Right" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{StaticResource CaptionTextBlockStyle}" />
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                            <Button
+                                                Content="Move"
+                                                IsEnabled="{Binding CanMove}"
+                                                Tag="{Binding}"
+                                                Click="MoveAppButton_Click" />
+                                            <Button
+                                                Content="Capsule"
+                                                Tag="{Binding}"
+                                                Click="CreateAppCapsuleButton_Click" />
+                                            <Button
+                                                Content="Uninstall"
+                                                IsEnabled="{Binding CanUninstall}"
+                                                Tag="{Binding}"
+                                                Click="UninstallAppButton_Click" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                </Grid>
+
+                <!-- VIEW 3: APPDATA & MYSTERY INSPECTOR -->
+                <Grid x:Name="AppDataPanel" Grid.Row="2" Visibility="Collapsed" RowSpacing="12">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="10">
+                        <TextBox
+                            x:Name="FoldersSearchBox"
+                            Width="300"
+                            PlaceholderText="Search folder name, path, or attributed app..."
+                            TextChanged="FoldersFilter_Changed" />
+                        <ComboBox
+                            x:Name="FoldersFilterCombo"
+                            SelectedIndex="0"
+                            SelectionChanged="FoldersFilter_Changed">
+                            <ComboBoxItem Content="All Folders" Tag="All" />
+                            <ComboBoxItem Content="Orphaned" Tag="Orphaned" />
+                            <ComboBoxItem Content="Offloadable" Tag="Offloadable" />
+                            <ComboBoxItem Content="Protected" Tag="Protected" />
+                            <ComboBoxItem Content="Offloaded" Tag="Offloaded" />
+                        </ComboBox>
+                        <Button Content="Scan AppData &amp; ProgramData" Click="RescanFoldersButton_Click" />
+                    </StackPanel>
+
+                    <ListView
+                        x:Name="FoldersListView"
+                        Grid.Row="1"
+                        SelectionMode="None">
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <Border
+                                    Margin="0,0,0,8"
+                                    Padding="14"
+                                    CornerRadius="8"
+                                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                    BorderThickness="1">
+                                    <Grid ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <StackPanel Grid.Column="0" Spacing="3">
+                                            <TextBlock Text="{Binding AttributionHeadline}" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                            <TextBlock Text="{Binding FolderPath}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{StaticResource CaptionTextBlockStyle}" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{Binding EvidenceLine}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{StaticResource CaptionTextBlockStyle}" TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="0,0,8,0">
+                                            <TextBlock Text="{Binding SizeFormatted}" HorizontalAlignment="Right" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                            <TextBlock Text="{Binding ClassificationText}" HorizontalAlignment="Right" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{StaticResource CaptionTextBlockStyle}" />
+                                        </StackPanel>
+
+                                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                            <Button
+                                                Content="Inspect"
+                                                Tag="{Binding}"
+                                                Click="InspectFolderButton_Click" />
+                                            <Button
+                                                Content="Offload"
+                                                IsEnabled="{Binding CanOffload}"
+                                                Tag="{Binding}"
+                                                Click="OffloadFolderButton_Click" />
+                                            <Button
+                                                Content="Delete"
+                                                Visibility="{Binding OrphanDeleteVisibility}"
+                                                Tag="{Binding}"
+                                                Click="DeleteOrphanButton_Click" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                </Grid>
+
+                <!-- VIEW 4: CAPSULES & LEDGER -->
+                <ScrollViewer x:Name="LedgerPanel" Grid.Row="2" Visibility="Collapsed">
+                    <StackPanel Spacing="18" Padding="0,0,8,0">
+                        <!-- Ledger Section -->
+                        <StackPanel Spacing="10">
+                            <Grid>
+                                <TextBlock Text="Active Junctions &amp; Move Ledger (SQLite)" Style="{StaticResource SubtitleTextBlockStyle}" />
+                                <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                                    <Button Content="Refresh Ledger" Click="RefreshLedgerButton_Click" />
+                                    <Button
+                                        Content="Sweep Orphaned Junctions"
+                                        Style="{StaticResource AccentButtonStyle}"
+                                        Click="SweepJunctions_Click" />
+                                </StackPanel>
+                            </Grid>
+
+                            <ListView x:Name="LedgerListView" SelectionMode="None">
+                                <ListView.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border
+                                            Margin="0,0,0,8"
+                                            Padding="14"
+                                            CornerRadius="8"
+                                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                            BorderThickness="1">
+                                            <Grid ColumnSpacing="12">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+
+                                                <StackPanel Grid.Column="0" Spacing="3">
+                                                    <TextBlock Text="{Binding AppDisplayName}" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                                    <TextBlock Text="{Binding RouteText}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{StaticResource CaptionTextBlockStyle}" TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Text="{Binding MetaText}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{StaticResource CaptionTextBlockStyle}" />
+                                                </StackPanel>
+
+                                                <StackPanel Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="0,0,8,0">
+                                                    <TextBlock Text="{Binding SizeFormatted}" HorizontalAlignment="Right" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                                    <TextBlock Text="{Binding Status}" HorizontalAlignment="Right" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{StaticResource CaptionTextBlockStyle}" />
+                                                </StackPanel>
+
+                                                <Button
+                                                    Grid.Column="2"
+                                                    Content="Restore to NVMe"
+                                                    IsEnabled="{Binding CanRollback}"
+                                                    VerticalAlignment="Center"
+                                                    Tag="{Binding}"
+                                                    Click="RollbackMoveButton_Click" />
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                        </StackPanel>
+
+                        <!-- Capsules Section -->
+                        <StackPanel Spacing="10">
+                            <Grid>
+                                <TextBlock Text="Portable State Capsules (.tiercapsule)" Style="{StaticResource SubtitleTextBlockStyle}" />
+                                <Button HorizontalAlignment="Right" Content="Refresh Capsules" Click="RefreshLedgerButton_Click" />
+                            </Grid>
+
+                            <ListView x:Name="CapsulesListView" SelectionMode="None">
+                                <ListView.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border
+                                            Margin="0,0,0,8"
+                                            Padding="14"
+                                            CornerRadius="8"
+                                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                            BorderThickness="1">
+                                            <Grid ColumnSpacing="12">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+
+                                                <StackPanel Grid.Column="0" Spacing="3">
+                                                    <TextBlock Text="{Binding AppDisplayName}" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                                    <TextBlock Text="{Binding ArchivePath}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{StaticResource CaptionTextBlockStyle}" TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Text="{Binding MetaText}" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Style="{StaticResource CaptionTextBlockStyle}" />
+                                                </StackPanel>
+
+                                                <TextBlock
+                                                    Grid.Column="1"
+                                                    Text="{Binding SizeFormatted}"
+                                                    VerticalAlignment="Center"
+                                                    Margin="0,0,8,0"
+                                                    Style="{StaticResource BodyStrongTextBlockStyle}" />
+
+                                                <Button
+                                                    Grid.Column="2"
+                                                    Content="Restore Redirected"
+                                                    Style="{StaticResource AccentButtonStyle}"
+                                                    VerticalAlignment="Center"
+                                                    Tag="{Binding}"
+                                                    Click="RestoreCapsuleButton_Click" />
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                        </StackPanel>
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
         </NavigationView>
     </Grid>
 </Window>
