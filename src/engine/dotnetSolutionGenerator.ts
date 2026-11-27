@@ -2,7 +2,6 @@ import { ZipEntryInput } from './zipBuilder';
 
 import slnRaw from '../../TierShift.sln?raw';
 import coreCsprojRaw from '../TierShift.Core/TierShift.Core.csproj?raw';
-import nativeMethodsRaw from '../TierShift.Core/NativeMethods.txt?raw';
 import pathGuardRaw from '../TierShift.Core/Guardrails/PathGuard.cs?raw';
 import ntfsJunctionRaw from '../TierShift.Core/FileSystem/NtfsJunction.cs?raw';
 import verifiedCopyRaw from '../TierShift.Core/FileSystem/VerifiedCopy.cs?raw';
@@ -45,15 +44,8 @@ export const DOTNET_SOLUTION_FILES: SolutionFileEntry[] = [
     path: 'src/TierShift.Core/TierShift.Core.csproj',
     language: 'xml',
     description:
-      'Pure C# net8.0-windows10.0.22621.0 class library with CsWin32 and Microsoft.Data.Sqlite.',
+      'Pure C# net8.0-windows10.0.22621.0 class library with Microsoft.Data.Sqlite and direct Win32 interop.',
     content: coreCsprojRaw,
-  },
-  {
-    path: 'src/TierShift.Core/NativeMethods.txt',
-    language: 'text',
-    description:
-      'CsWin32 Win32 P/Invoke declarations for NTFS Reparse Points & Restart Manager.',
-    content: nativeMethodsRaw,
   },
   {
     path: 'src/TierShift.Core/Guardrails/PathGuard.cs',

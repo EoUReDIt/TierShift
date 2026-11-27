@@ -13,6 +13,11 @@ on:
         required: false
         type: boolean
         default: false
+      allow_overwrite:
+        description: 'Allow updating an existing tag/release with the same version'
+        required: false
+        type: boolean
+        default: false
       release_notes:
         description: 'Optional release summary notes'
         required: false
@@ -26,17 +31,29 @@ jobs:
   build-and-release:
     name: Build, Test & Package Windows x64 Installer
     runs-on: windows-latest
+    env:
+      VERSION: ${{ inputs.version }}
+      ALLOW_OVERWRITE: ${{ inputs.allow_overwrite }}
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Validate semantic version input
+      - name: Validate semantic version & check tag collision
         shell: pwsh
         run: |
-          if ("${{ inputs.version }}" -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$') {
-            Write-Error "Invalid version '${{ inputs.version }}'. Expected semver such as 0.1.0 or 0.1.0-beta.1."
+          if ($env:VERSION -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$') {
+            Write-Error "Invalid version '$env:VERSION'. Expected semver such as 0.1.0 or 0.1.0-beta.1."
             exit 1
+          }
+
+          if ($env:ALLOW_OVERWRITE -ne 'true') {
+            $existing = git ls-remote --tags origin "refs/tags/v$env:VERSION"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            if (-not [string]::IsNullOrWhiteSpace($existing)) {
+              Write-Error "Tag 'v$env:VERSION' already exists. Bump version or enable 'allow_overwrite'."
+              exit 1
+            }
           }
 
       - name: Setup .NET 8 SDK
@@ -53,7 +70,7 @@ jobs:
       - name: Publish Unpackaged WinUI 3 App (self-contained win-x64)
         shell: pwsh
         run: |
-          $ver = ("${{ inputs.version }}" -split '-')[0]
+          $ver = ($env:VERSION -split '-')[0]
           dotnet publish src/TierShift.App/TierShift.App.csproj `
             -c Release `
             -r win-x64 `
@@ -61,37 +78,64 @@ jobs:
             -p:Platform=x64 `
             -p:WindowsPackageType=None `
             -p:WindowsAppSDKSelfContained=true `
-            -p:Version=${{ inputs.version }} `
-            -p:AssemblyVersion=$ver.0 `
-            -p:FileVersion=$ver.0 `
+            -p:Version=$env:VERSION `
+            -p:AssemblyVersion="$ver.0" `
+            -p:FileVersion="$ver.0" `
             -o artifacts/publish/win-x64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build recommended Inno Setup installer (TierShift-Setup-x64.exe)
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path artifacts/release | Out-Null
-          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-          if (-not (Test-Path $iscc)) {
-            choco install innosetup --yes --no-progress
+
+          function Find-Iscc {
+            $cmd = Get-Command iscc -ErrorAction SilentlyContinue
+            if ($cmd) { return $cmd.Source }
+            $candidates = @(
+              "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+              "${env:ProgramFiles}\Inno Setup 6\ISCC.exe",
+              "${env:LOCALAPPDATA}\Programs\Inno Setup 6\ISCC.exe"
+            )
+            foreach ($path in $candidates) {
+              if (Test-Path $path) { return $path }
+            }
+            return $null
           }
+
+          $iscc = Find-Iscc
+          if (-not $iscc) {
+            choco install innosetup --yes --no-progress
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $iscc = Find-Iscc
+          }
+          if (-not $iscc) {
+            Write-Error "ISCC.exe not found after installing Inno Setup."
+            exit 1
+          }
+
+          $publishDir = (Resolve-Path "artifacts/publish/win-x64").Path
+          $outputDir = (Resolve-Path "artifacts/release").Path
+
           & $iscc `
-            "/DMyAppVersion=${{ inputs.version }}" `
-            "/DPublishDir=..\artifacts\publish\win-x64" `
-            "/DOutputDir=..\artifacts\release" `
+            "/DMyAppVersion=$env:VERSION" `
+            "/DPublishDir=$publishDir" `
+            "/DOutputDir=$outputDir" `
             installer/TierShift.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Create portable x64 ZIP archive
         shell: pwsh
         run: |
           Compress-Archive `
             -Path "artifacts/publish/win-x64/*" `
-            -DestinationPath "artifacts/release/TierShift-${{ inputs.version }}-win-x64-portable.zip" `
+            -DestinationPath "artifacts/release/TierShift-$env:VERSION-win-x64-portable.zip" `
             -Force
 
       - name: Generate SHA-256 checksums
         shell: pwsh
         run: |
-          $files = Get-ChildItem -Path artifacts/release -File
+          $files = Get-ChildItem -Path artifacts/release -File | Where-Object { $_.Name -ne 'SHA256SUMS.txt' } | Sort-Object Name
           $lines = foreach ($f in $files) {
             $hash = (Get-FileHash -Path $f.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
             "$hash  $($f.Name)"

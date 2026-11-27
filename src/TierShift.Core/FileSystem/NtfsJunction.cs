@@ -144,12 +144,14 @@ public static class NtfsJunction
         if (!Directory.Exists(junctionPath) || !IsJunction(junctionPath))
             return false;
 
-        var resolved = ResolveFinalPath(junctionPath);
-        if (string.IsNullOrEmpty(resolved))
+        var resolvedJunction = ResolveFinalPath(junctionPath);
+        if (string.IsNullOrEmpty(resolvedJunction))
             return false;
 
-        var normalizedExpected = Path.GetFullPath(expectedTarget).TrimEnd('\\');
-        return resolved.Equals(normalizedExpected, StringComparison.OrdinalIgnoreCase);
+        var resolvedExpected = ResolveFinalPath(expectedTarget)
+            ?? Path.GetFullPath(expectedTarget).TrimEnd('\\');
+
+        return resolvedJunction.Equals(resolvedExpected, StringComparison.OrdinalIgnoreCase);
     }
 
     private static SafeFileHandle OpenDirectoryHandle(string path, uint desiredAccess, bool openReparsePoint)

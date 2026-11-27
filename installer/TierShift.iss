@@ -28,8 +28,8 @@ DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 ; Require Windows 10 22H2 (19045) / Windows 11 x64
 MinVersion=10.0.19045
-ArchitecturesAllowed=x64compatible
-ArchitecturesInstallIn64BitMode=x64compatible
+ArchitecturesAllowed=x64
+ArchitecturesInstallIn64BitMode=x64
 ; Elevated install matches requireAdministrator manifest for NTFS Junction & HKLM access
 PrivilegesRequired=admin
 OutputDir={#OutputDir}
