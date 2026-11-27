@@ -13,6 +13,7 @@ import {
   MoveLedgerRow,
 } from '../engine/types';
 import { formatBytes } from '../engine/pathGuard';
+import { StorageUsageDonutChart } from './StorageUsageDonutChart';
 
 export type NavSection =
   | 'dashboard'
@@ -113,6 +114,28 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const orphanedSweepPending = ledger.filter(
     (l) => l.status === 'Active' && l.sourceJunctionMissing && l.targetDirEmpty
   ).length;
+
+  // D3 Donut chart totals: Active (on NVMe) vs. Offloaded (cold storage) vs. Orphaned (leftovers)
+  const activeAppsOnNvme = apps.filter((a) => a.status === 'OnNVMe');
+  const activeNonOrphanFolders = folders.filter(
+    (f) => !f.isReparsePoint && f.attribution.classification !== 'Orphaned'
+  );
+  const activeStorageBytes =
+    activeAppsOnNvme.reduce(
+      (sum, a) => sum + a.installBytes + a.programDataBytes,
+      0
+    ) + activeNonOrphanFolders.reduce((sum, f) => sum + f.sizeBytes, 0);
+  const activeStorageCount =
+    activeAppsOnNvme.length + activeNonOrphanFolders.length;
+
+  const activeLedgerMoves = ledger.filter(
+    (l) => l.status === 'Active' && !(l.sourceJunctionMissing && l.targetDirEmpty)
+  );
+  const offloadedStorageBytes = activeLedgerMoves.reduce(
+    (sum, l) => sum + l.bytesMoved,
+    0
+  );
+  const offloadedStorageCount = activeLedgerMoves.length;
 
   // Top 5 priority actions ranked by reclaimable size
   type RecommendationItem =
@@ -400,6 +423,17 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
         </button>
       </section>
+
+      {/* D3 Storage Usage Breakdown Donut (Active vs. Offloaded vs. Orphaned) */}
+      <StorageUsageDonutChart
+        activeBytes={activeStorageBytes}
+        activeCount={activeStorageCount}
+        offloadedBytes={offloadedStorageBytes}
+        offloadedCount={offloadedStorageCount}
+        orphanedBytes={orphanedBytes}
+        orphanedCount={orphanedFolders.length}
+        onNavigate={onNavigate}
+      />
 
       {/* Priority Reclaim Queue */}
       <section className="rounded-xl border border-[#E2E6EC] bg-white dark:border-[#2A2F3A] dark:bg-[#1A1D23]">

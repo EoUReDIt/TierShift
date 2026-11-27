@@ -345,6 +345,94 @@ public class PathGuardTests
 }
 `,
   },
+  {
+    path: '.github/workflows/release.yml',
+    language: 'text',
+    description: 'Manual workflow_dispatch GitHub Action that tests, publishes win-x64 WinUI 3, builds the Inno Setup installer, and publishes a GitHub Release.',
+    content: `name: Manual Release (WinUI 3 + Inno Setup)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Semantic version to release (e.g. 0.1.0)'
+        required: true
+        type: string
+        default: '0.1.0'
+      prerelease:
+        description: 'Mark GitHub Release as pre-release'
+        required: false
+        type: boolean
+        default: false
+      release_notes:
+        description: 'Optional release summary notes'
+        required: false
+        type: string
+        default: 'TierShift release with Inno Setup installer and portable x64 archive.'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - run: dotnet restore TierShift.sln -r win-x64
+      - run: dotnet test tests/TierShift.Core.Tests/TierShift.Core.Tests.csproj -c Release --no-restore
+      - name: Publish Unpackaged WinUI 3 (win-x64)
+        shell: pwsh
+        run: |
+          dotnet publish src/TierShift.App/TierShift.App.csproj -c Release -r win-x64 --self-contained true -p:Platform=x64 -p:WindowsPackageType=None -p:WindowsAppSDKSelfContained=true -p:Version=\${{ inputs.version }} -o artifacts/publish/win-x64
+      - name: Build Inno Setup Installer
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts/release | Out-Null
+          & "\${env:ProgramFiles(x86)}\\Inno Setup 6\\ISCC.exe" "/DMyAppVersion=\${{ inputs.version }}" "/DPublishDir=..\\artifacts\\publish\\win-x64" "/DOutputDir=..\\artifacts\\release" installer/TierShift.iss
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v\${{ inputs.version }}
+          name: TierShift v\${{ inputs.version }}
+          prerelease: \${{ inputs.prerelease }}
+          files: |
+            artifacts/release/TierShift-Setup-\${{ inputs.version }}-x64.exe
+            artifacts/release/SHA256SUMS.txt
+`,
+  },
+  {
+    path: 'installer/TierShift.iss',
+    language: 'text',
+    description: 'Recommended Inno Setup 6 installer script for unpackaged WinUI 3 (.NET 8 x64) with Administrator elevation.',
+    content: `; TierShift Recommended Windows Installer (Inno Setup 6)
+#ifndef MyAppVersion
+  #define MyAppVersion "0.1.0"
+#endif
+
+[Setup]
+AppId={{9F4C28E1-6D4B-4C7A-A420-81B32F09C512}
+AppName=TierShift
+AppVersion={#MyAppVersion}
+DefaultDirName={autopf}\\TierShift
+MinVersion=10.0.19045
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
+PrivilegesRequired=admin
+OutputBaseFilename=TierShift-Setup-{#MyAppVersion}-x64
+Compression=lzma2/ultra64
+SolidCompression=yes
+WizardStyle=modern
+
+[Files]
+Source: "{#PublishDir}\\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+[Icons]
+Name: "{autoprograms}\\TierShift"; Filename: "{app}\\TierShift.App.exe"
+`,
+  },
 ];
 
 export function getSolutionZipEntries(): ZipEntryInput[] {
