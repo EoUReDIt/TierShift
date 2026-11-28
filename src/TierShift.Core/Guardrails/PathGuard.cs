@@ -40,6 +40,15 @@ public static partial class PathGuard
     [GeneratedRegex(@"^[a-z]:\\users\\[^\\]+\\appdata(\\(local|locallow|roaming))?$", RegexOptions.IgnoreCase)]
     private static partial Regex AppDataContainerRootRegex();
 
+    /// <summary>
+    /// File systems a junction may point into. The junction itself always lives on the NTFS
+    /// source volume; its target can be any local volume, so exFAT data drives qualify too.
+    /// FAT32 is excluded because of its 4 GB per-file limit.
+    /// </summary>
+    public static bool IsJunctionTargetFileSystem(string? fileSystem) =>
+        string.Equals(fileSystem, "NTFS", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(fileSystem, "exFAT", StringComparison.OrdinalIgnoreCase);
+
     public static PathGuardResult Validate(
         string sourcePath,
         string targetPath,
@@ -136,8 +145,16 @@ public static partial class PathGuard
         if (drive.DriveType != DriveType.Fixed)
             return new(false, "BLOCKED_TARGET_DRIVE_TYPE", $"Target drive {drive.Name} must be a local Fixed disk.");
 
-        if (!drive.DriveFormat.Equals("NTFS", StringComparison.OrdinalIgnoreCase))
-            return new(false, "BLOCKED_TARGET_FILESYSTEM", $"Target drive {drive.Name} must be NTFS (found {drive.DriveFormat}).");
+        if (isMsixNativeMove)
+        {
+            // PackageManager.MovePackageToVolumeAsync only accepts NTFS volumes.
+            if (!drive.DriveFormat.Equals("NTFS", StringComparison.OrdinalIgnoreCase))
+                return new(false, "BLOCKED_TARGET_FILESYSTEM", $"Store (MSIX) apps can only move to an NTFS drive; {drive.Name} is {drive.DriveFormat}.");
+        }
+        else if (!IsJunctionTargetFileSystem(drive.DriveFormat))
+        {
+            return new(false, "BLOCKED_TARGET_FILESYSTEM", $"Target drive {drive.Name} must be NTFS or exFAT (found {drive.DriveFormat}).");
+        }
 
         var requiredBytes = (long)Math.Ceiling(sourceSizeBytes * 1.10);
         if (drive.AvailableFreeSpace < requiredBytes)

@@ -61,4 +61,19 @@ public class PathGuardTests
         Assert.False(result.Allowed);
         Assert.Equal("BLOCKED_NESTED_PATH", result.Code);
     }
+
+    [Theory]
+    [InlineData("NTFS", true)]
+    [InlineData("ntfs", true)]
+    [InlineData("exFAT", true)]
+    [InlineData("EXFAT", true)]
+    [InlineData("FAT32", false)]
+    [InlineData("FAT", false)]
+    [InlineData("ReFS", false)]
+    [InlineData("", false)]
+    [InlineData(null, false)]
+    public void IsJunctionTargetFileSystem_AllowsNtfsAndExFatOnly(string? fileSystem, bool expected)
+    {
+        Assert.Equal(expected, PathGuard.IsJunctionTargetFileSystem(fileSystem));
+    }
 }
