@@ -15,7 +15,7 @@ public sealed class VolumeRowViewModel
 {
     public required VolumeInfo Source { get; init; }
     public string Title => $"{Source.DriveLetter}  {Source.VolumeLabel}";
-    public string Meta => $"{Source.FileSystem} · {Source.DriveType} · {(Source.IsNtfsFixed ? "NTFS Junction Ready" : "Not Eligible for Junctions")}";
+    public string Meta => $"{Source.FileSystem} · {Source.DriveType} · {(Source.IsNtfsFixed ? "NTFS Junction Ready" : Source.IsJunctionEligible ? $"Junction Ready ({Source.FileSystem})" : "Not Eligible for Junctions")}";
     public string UsageSummary => $"{MainWindow.FormatBytes(Source.UsedBytes)} / {MainWindow.FormatBytes(Source.TotalBytes)} ({MainWindow.FormatBytes(Source.FreeBytes)} free)";
     public double UsedPercent => Source.UsedPercent;
 }
@@ -181,6 +181,7 @@ public sealed partial class MainWindow : Window
         }
 
         int preferredIndex = -1;
+        int eligibleIndex = -1;
         int fallbackIndex = -1;
         for (int i = 0; i < targetCandidates.Count; i++)
         {
@@ -192,17 +193,19 @@ public sealed partial class MainWindow : Window
                 Tag = vol.DriveLetter
             });
 
-            // Default to a secondary drive: NTFS fixed first, then any non-OS drive.
+            // Default to a secondary drive: NTFS fixed first, then exFAT fixed, then any non-OS drive.
             if (isSystem)
                 continue;
             if (vol.IsNtfsFixed && preferredIndex < 0)
                 preferredIndex = i;
+            if (vol.IsJunctionEligible && eligibleIndex < 0)
+                eligibleIndex = i;
             if (fallbackIndex < 0)
                 fallbackIndex = i;
         }
 
         if (preferredIndex < 0)
-            preferredIndex = fallbackIndex >= 0 ? fallbackIndex : 0;
+            preferredIndex = eligibleIndex >= 0 ? eligibleIndex : fallbackIndex >= 0 ? fallbackIndex : 0;
 
         TargetDriveCombo.SelectedIndex = preferredIndex;
         _selectedTargetDrive = targetCandidates[preferredIndex].DriveLetter;
@@ -900,7 +903,7 @@ public sealed partial class MainWindow : Window
     private bool EnsureTargetDriveSelected()
     {
         if (!string.IsNullOrWhiteSpace(_selectedTargetDrive)) return true;
-        SetStatus(InfoBarSeverity.Warning, "No Secondary Drive", "Connect or select a local fixed NTFS secondary drive (D:+) to relocate apps or create capsules.");
+        SetStatus(InfoBarSeverity.Warning, "No Secondary Drive", "Connect or select a local fixed NTFS or exFAT secondary drive (D:+) to relocate apps or create capsules.");
         return false;
     }
 

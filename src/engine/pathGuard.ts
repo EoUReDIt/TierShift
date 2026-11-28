@@ -194,13 +194,16 @@ export function validatePathGuard(input: PathGuardInput): PathGuardCheckResult {
     };
   }
 
-  // 11. Target drive must be NTFS
-  if (input.targetDrive.fileSystem !== 'NTFS') {
+  // 11. Target file system: NTFS or exFAT for junctions; NTFS only for MSIX volume moves
+  const fs = input.targetDrive.fileSystem;
+  if (input.isMsixNativeMove ? fs !== 'NTFS' : fs !== 'NTFS' && fs !== 'exFAT') {
     return {
       allowed: false,
       code: 'BLOCKED_TARGET_FILESYSTEM',
-      message: `Target drive ${input.targetDrive.letter} is formatted as ${input.targetDrive.fileSystem}. NTFS is strictly required for ACL preservation and reparse targets.`,
-      ruleMatched: 'PreFlight.NtfsRequired',
+      message: input.isMsixNativeMove
+        ? `Target drive ${input.targetDrive.letter} is formatted as ${fs}. Store (MSIX) apps can only move to an NTFS drive.`
+        : `Target drive ${input.targetDrive.letter} is formatted as ${fs}. Junction targets must be NTFS or exFAT.`,
+      ruleMatched: input.isMsixNativeMove ? 'PreFlight.MsixNtfsRequired' : 'PreFlight.JunctionTargetFileSystem',
     };
   }
 

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Microsoft.Win32;
 using TierShift.Core.FileSystem;
+using TierShift.Core.Guardrails;
 using Windows.Management.Deployment;
 
 namespace TierShift.Core.Discovery;
@@ -17,6 +18,7 @@ public sealed record VolumeInfo(
     public long UsedBytes => Math.Max(0, TotalBytes - FreeBytes);
     public double UsedPercent => TotalBytes > 0 ? (double)UsedBytes / TotalBytes * 100.0 : 0.0;
     public bool IsNtfsFixed => DriveType == DriveType.Fixed && FileSystem.Equals("NTFS", StringComparison.OrdinalIgnoreCase);
+    public bool IsJunctionEligible => DriveType == DriveType.Fixed && PathGuard.IsJunctionTargetFileSystem(FileSystem);
 }
 
 public sealed record InstalledAppInfo(

@@ -75,7 +75,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     activeTarget.totalBytes - activeTarget.usedBytes
   );
   const targetCompatible =
-    activeTarget.fileSystem === 'NTFS' && activeTarget.driveType === 'Fixed';
+    (activeTarget.fileSystem === 'NTFS' || activeTarget.fileSystem === 'exFAT') &&
+    activeTarget.driveType === 'Fixed';
 
   // Reclaimable KPI calculations
   const dormantApps = apps.filter(
