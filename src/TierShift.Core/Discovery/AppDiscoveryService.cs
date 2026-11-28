@@ -142,7 +142,12 @@ public static class AppDiscoveryService
         return trimmed.ToUpperInvariant();
     }
 
-    public static async Task MoveMsixPackageToVolumeAsync(string packageFullName, string targetDriveLetter, CancellationToken ct = default)
+    /// <param name="percentProgress">Optional 0–100 progress reported by Windows' package mover.</param>
+    public static async Task MoveMsixPackageToVolumeAsync(
+        string packageFullName,
+        string targetDriveLetter,
+        CancellationToken ct = default,
+        IProgress<double>? percentProgress = null)
     {
         var normalizedLetter = NormalizeDriveLetter(targetDriveLetter);
         if (string.IsNullOrEmpty(normalizedLetter))
@@ -165,7 +170,9 @@ public static class AppDiscoveryService
             throw new InvalidOperationException($"No MSIX PackageVolume found for {targetDriveLetter}.");
 
         var op = pm.MovePackageToVolumeAsync(packageFullName, DeploymentOptions.None, volume);
-        var result = await op.AsTask(ct);
+        var result = percentProgress == null
+            ? await op.AsTask(ct)
+            : await op.AsTask(ct, new Progress<DeploymentProgress>(d => percentProgress.Report(Math.Clamp(d.percentage, 0u, 100u))));
         if (result.ExtendedErrorCode != null)
             throw new InvalidOperationException($"MSIX move failed: {result.ErrorText}", result.ExtendedErrorCode);
     }

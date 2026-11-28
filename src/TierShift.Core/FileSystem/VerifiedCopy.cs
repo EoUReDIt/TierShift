@@ -1,6 +1,25 @@
 namespace TierShift.Core.FileSystem;
 
-public sealed record CopyProgress(long FilesCopied, long TotalFiles, long BytesCopied, long TotalBytes);
+public enum CopyPhase
+{
+    /// <summary>Counting files and bytes in the source before copying.</summary>
+    Scanning,
+    /// <summary>Copying file contents.</summary>
+    Copying,
+    /// <summary>Re-measuring the target to verify file count and byte total.</summary>
+    Verifying,
+}
+
+public sealed record CopyProgress(
+    long FilesCopied,
+    long TotalFiles,
+    long BytesCopied,
+    long TotalBytes,
+    CopyPhase Phase = CopyPhase.Copying,
+    string? CurrentFile = null)
+{
+    public double Fraction => TotalBytes > 0 ? Math.Clamp((double)BytesCopied / TotalBytes, 0, 1) : 0;
+}
 
 public sealed record DirectoryStats(long FileCount, long TotalBytes, DateTime LatestWriteUtc);
 
@@ -74,24 +93,30 @@ public static class VerifiedCopy
         return new DirectoryStats(fileCount, totalBytes, latestWrite);
     }
 
+    /// <summary>Files at least this large are copied in chunks so progress moves during the file.</summary>
+    public const long ChunkedCopyThresholdBytes = 8L * 1024 * 1024;
+    private const int ChunkSizeBytes = 1024 * 1024;
+    private static readonly TimeSpan DefaultReportInterval = TimeSpan.FromMilliseconds(200);
+
     public static async Task<DirectoryStats> CopyDirectoryVerifiedAsync(
         string sourceDir,
         string targetDir,
         IProgress<CopyProgress>? progress = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        TimeSpan? reportInterval = null)
     {
-        var sourceStats = MeasureDirectory(sourceDir, ct);
+        progress?.Report(new CopyProgress(0, 0, 0, 0, CopyPhase.Scanning));
+        var sourceStats = await Task.Run(() => MeasureDirectory(sourceDir, ct), ct);
         Directory.CreateDirectory(targetDir);
 
-        long filesCopied = 0;
-        long bytesCopied = 0;
+        var state = new CopyState(sourceStats, progress, reportInterval ?? DefaultReportInterval);
+        state.Report(force: true);
 
-        await Task.Run(() =>
-        {
-            CopyRecursive(sourceDir, targetDir, ref filesCopied, ref bytesCopied, sourceStats, progress, ct);
-        }, ct);
+        await Task.Run(() => CopyRecursive(sourceDir, targetDir, state, ct), ct);
+        state.Report(force: true);
 
-        var targetStats = MeasureDirectory(targetDir, ct);
+        progress?.Report(new CopyProgress(state.FilesCopied, sourceStats.FileCount, state.BytesCopied, sourceStats.TotalBytes, CopyPhase.Verifying));
+        var targetStats = await Task.Run(() => MeasureDirectory(targetDir, ct), ct);
         if (targetStats.FileCount != sourceStats.FileCount || targetStats.TotalBytes != sourceStats.TotalBytes)
         {
             throw new IOException(
@@ -99,40 +124,60 @@ public static class VerifiedCopy
                 $"target has {targetStats.FileCount} files ({targetStats.TotalBytes:N0} bytes).");
         }
 
-        progress?.Report(new CopyProgress(sourceStats.FileCount, sourceStats.FileCount, sourceStats.TotalBytes, sourceStats.TotalBytes));
+        progress?.Report(new CopyProgress(sourceStats.FileCount, sourceStats.FileCount, sourceStats.TotalBytes, sourceStats.TotalBytes, CopyPhase.Verifying));
         return targetStats;
     }
 
-    private static void CopyRecursive(
-        string sourceDir,
-        string targetDir,
-        ref long filesCopied,
-        ref long bytesCopied,
-        DirectoryStats totals,
-        IProgress<CopyProgress>? progress,
-        CancellationToken ct)
+    private sealed class CopyState(DirectoryStats totals, IProgress<CopyProgress>? progress, TimeSpan reportInterval)
+    {
+        private readonly System.Diagnostics.Stopwatch _sinceReport = System.Diagnostics.Stopwatch.StartNew();
+
+        public long FilesCopied;
+        public long BytesCopied;
+        public string? CurrentFile;
+
+        /// <summary>Reports at most once per report interval unless forced.</summary>
+        public void Report(bool force = false)
+        {
+            if (progress == null || (!force && _sinceReport.Elapsed < reportInterval))
+                return;
+            _sinceReport.Restart();
+            progress.Report(new CopyProgress(FilesCopied, totals.FileCount, BytesCopied, totals.TotalBytes, CopyPhase.Copying, CurrentFile));
+        }
+    }
+
+    private static void CopyRecursive(string sourceDir, string targetDir, CopyState state, CancellationToken ct)
     {
         Directory.CreateDirectory(targetDir);
 
         foreach (var filePath in Directory.EnumerateFiles(sourceDir))
         {
             ct.ThrowIfCancellationRequested();
-            var fileName = Path.GetFileName(filePath);
-            var destPath = Path.Combine(targetDir, fileName);
-
-            File.Copy(filePath, destPath, overwrite: true);
-
+            var destPath = Path.Combine(targetDir, Path.GetFileName(filePath));
             var srcInfo = new FileInfo(filePath);
+            state.CurrentFile = filePath;
+
+            if (srcInfo.Length >= ChunkedCopyThresholdBytes)
+            {
+                CopyFileChunked(filePath, destPath, state, ct);
+                // Carry over the simple attributes that File.Copy would; ReadOnly is applied last.
+                const FileAttributes copyable = FileAttributes.Hidden | FileAttributes.System | FileAttributes.Archive;
+                var attrs = srcInfo.Attributes & copyable;
+                File.SetAttributes(destPath, attrs == 0 ? FileAttributes.Normal : attrs);
+            }
+            else
+            {
+                File.Copy(filePath, destPath, overwrite: true);
+                state.BytesCopied += srcInfo.Length;
+            }
+
             File.SetCreationTimeUtc(destPath, srcInfo.CreationTimeUtc);
             File.SetLastWriteTimeUtc(destPath, srcInfo.LastWriteTimeUtc);
+            if ((srcInfo.Attributes & FileAttributes.ReadOnly) != 0)
+                File.SetAttributes(destPath, File.GetAttributes(destPath) | FileAttributes.ReadOnly);
 
-            filesCopied++;
-            bytesCopied += srcInfo.Length;
-
-            if (filesCopied % 25 == 0 || filesCopied == totals.FileCount)
-            {
-                progress?.Report(new CopyProgress(filesCopied, totals.FileCount, bytesCopied, totals.TotalBytes));
-            }
+            state.FilesCopied++;
+            state.Report();
         }
 
         foreach (var subDir in Directory.EnumerateDirectories(sourceDir))
@@ -141,13 +186,41 @@ public static class VerifiedCopy
             if ((File.GetAttributes(subDir) & FileAttributes.ReparsePoint) != 0)
                 continue;
 
-            var dirName = Path.GetFileName(subDir);
-            var destSubDir = Path.Combine(targetDir, dirName);
-            CopyRecursive(subDir, destSubDir, ref filesCopied, ref bytesCopied, totals, progress, ct);
+            var destSubDir = Path.Combine(targetDir, Path.GetFileName(subDir));
+            CopyRecursive(subDir, destSubDir, state, ct);
 
             var srcDirInfo = new DirectoryInfo(subDir);
             Directory.SetCreationTimeUtc(destSubDir, srcDirInfo.CreationTimeUtc);
             Directory.SetLastWriteTimeUtc(destSubDir, srcDirInfo.LastWriteTimeUtc);
+        }
+    }
+
+    /// <summary>
+    /// Copies one large file in 1 MB chunks, reporting progress as it goes. If the copy fails or
+    /// is cancelled, the partial destination file is removed.
+    /// </summary>
+    private static void CopyFileChunked(string sourcePath, string destPath, CopyState state, CancellationToken ct)
+    {
+        var buffer = new byte[ChunkSizeBytes];
+        try
+        {
+            using var src = new FileStream(sourcePath, FileMode.Open, FileAccess.Read, FileShare.Read, ChunkSizeBytes, FileOptions.SequentialScan);
+            using var dst = new FileStream(destPath, FileMode.Create, FileAccess.Write, FileShare.None, ChunkSizeBytes, FileOptions.SequentialScan);
+            dst.SetLength(src.Length);
+
+            int read;
+            while ((read = src.Read(buffer, 0, buffer.Length)) > 0)
+            {
+                ct.ThrowIfCancellationRequested();
+                dst.Write(buffer, 0, read);
+                state.BytesCopied += read;
+                state.Report();
+            }
+        }
+        catch
+        {
+            try { File.Delete(destPath); } catch { /* best effort */ }
+            throw;
         }
     }
 }
