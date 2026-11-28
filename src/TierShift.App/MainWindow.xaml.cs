@@ -166,37 +166,52 @@ public sealed partial class MainWindow : Window
         _volumes = AppDiscoveryService.GetLocalVolumes();
         VolumesItemsControl.ItemsSource = _volumes.Select(v => new VolumeRowViewModel { Source = v }).ToList();
 
-        var targetCandidates = _volumes
-            .Where(v => !v.DriveLetter.Equals("C:", StringComparison.OrdinalIgnoreCase))
-            .ToList();
+        // Every ready volume is a candidate, including the OS drive (useful for moving apps back
+        // or storing capsules there). PathGuard still blocks same-volume junction moves.
+        var targetCandidates = _volumes.ToList();
+        var systemDrive = GetSystemDriveLetter();
 
         TargetDriveCombo.Items.Clear();
         if (targetCandidates.Count == 0)
         {
-            TargetDriveCombo.Items.Add(new ComboBoxItem { Content = "No secondary drive detected", Tag = "" });
+            TargetDriveCombo.Items.Add(new ComboBoxItem { Content = "No drive detected", Tag = "" });
             TargetDriveCombo.SelectedIndex = 0;
             _selectedTargetDrive = "";
             return;
         }
 
         int preferredIndex = -1;
+        int fallbackIndex = -1;
         for (int i = 0; i < targetCandidates.Count; i++)
         {
             var vol = targetCandidates[i];
+            var isSystem = vol.DriveLetter.Equals(systemDrive, StringComparison.OrdinalIgnoreCase);
             TargetDriveCombo.Items.Add(new ComboBoxItem
             {
-                Content = $"{vol.DriveLetter} {vol.VolumeLabel} ({vol.FileSystem} · {FormatBytes(vol.FreeBytes)} free)",
+                Content = $"{vol.DriveLetter} {vol.VolumeLabel}{(isSystem ? " (OS drive)" : "")} ({vol.FileSystem} · {FormatBytes(vol.FreeBytes)} free)",
                 Tag = vol.DriveLetter
             });
+
+            // Default to a secondary drive: NTFS fixed first, then any non-OS drive.
+            if (isSystem)
+                continue;
             if (vol.IsNtfsFixed && preferredIndex < 0)
                 preferredIndex = i;
+            if (fallbackIndex < 0)
+                fallbackIndex = i;
         }
 
         if (preferredIndex < 0)
-            preferredIndex = 0;
+            preferredIndex = fallbackIndex >= 0 ? fallbackIndex : 0;
 
         TargetDriveCombo.SelectedIndex = preferredIndex;
         _selectedTargetDrive = targetCandidates[preferredIndex].DriveLetter;
+    }
+
+    private static string GetSystemDriveLetter()
+    {
+        var root = Path.GetPathRoot(Environment.GetFolderPath(Environment.SpecialFolder.Windows));
+        return string.IsNullOrEmpty(root) ? "C:" : root.TrimEnd('\\');
     }
 
     private void TargetDriveCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
