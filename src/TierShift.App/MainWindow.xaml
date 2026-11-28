@@ -126,6 +126,12 @@
                         x:Name="BusyProgressBar"
                         IsIndeterminate="True"
                         Visibility="Collapsed" />
+                    <TextBlock
+                        x:Name="BusyProgressText"
+                        Style="{StaticResource CaptionTextBlockStyle}"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        TextTrimming="CharacterEllipsis"
+                        Visibility="Collapsed" />
                 </StackPanel>
 
                 <!-- VIEW 1: DASHBOARD -->

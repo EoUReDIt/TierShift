@@ -534,7 +534,19 @@ public sealed partial class MainWindow : Window
 
             if (isMsix && !string.IsNullOrWhiteSpace(app.PackageFullName))
             {
-                await AppDiscoveryService.MoveMsixPackageToVolumeAsync(app.PackageFullName, _selectedTargetDrive);
+                BusyProgressText.Visibility = Visibility.Visible;
+                BusyProgressText.Text = "Windows is moving the package...";
+                await AppDiscoveryService.MoveMsixPackageToVolumeAsync(
+                    app.PackageFullName,
+                    _selectedTargetDrive,
+                    percentProgress: new Progress<double>(pct =>
+                    {
+                        if (!_isBusy) return;
+                        BusyProgressBar.IsIndeterminate = false;
+                        BusyProgressBar.Maximum = 100;
+                        BusyProgressBar.Value = pct;
+                        BusyProgressText.Text = $"{pct:0}%  ·  Windows is moving the package (no time estimate available for Store apps)";
+                    }));
                 await _ledger.InsertMoveAsync(new MoveLedgerRecord(
                     Guid.NewGuid().ToString(),
                     app.DisplayName,
@@ -547,21 +559,13 @@ public sealed partial class MainWindow : Window
             }
             else
             {
-                var progress = new Progress<CopyProgress>(p =>
-                {
-                    BusyProgressBar.IsIndeterminate = false;
-                    BusyProgressBar.Maximum = Math.Max(1, p.TotalBytes);
-                    BusyProgressBar.Value = p.BytesCopied;
-                    StatusBanner.Message = $"Copied {p.FilesCopied:N0} / {p.TotalFiles:N0} files ({FormatBytes(p.BytesCopied)} / {FormatBytes(p.TotalBytes)})...";
-                });
-
                 await _moveService.ExecuteAsync(
                     app.DisplayName,
                     "Win32Junction",
                     app.InstallPath,
                     targetPath,
                     app.InstallBytes,
-                    progress,
+                    CreateCopyProgress(),
                     closeLockingApps: closeLocks);
             }
 
@@ -577,7 +581,6 @@ public sealed partial class MainWindow : Window
         }
         finally
         {
-            BusyProgressBar.IsIndeterminate = true;
             SetBusy(false);
         }
     }
@@ -610,6 +613,7 @@ public sealed partial class MainWindow : Window
                 folder.FolderPath,
                 targetPath,
                 folder.SizeBytes,
+                CreateCopyProgress(),
                 closeLockingApps: false);
 
             RefreshVolumes();
@@ -733,7 +737,7 @@ public sealed partial class MainWindow : Window
         try
         {
             SetBusy(true, "Rolling Back Move", $"Restoring {row.AppDisplayName} to {row.SourcePath}...");
-            await _moveService.RollbackAsync(row.Id);
+            await _moveService.RollbackAsync(row.Id, CreateCopyProgress());
             RefreshVolumes();
             await RefreshLedgerAndCapsulesAsync();
             SetStatus(InfoBarSeverity.Success, "Rollback Complete", $"Restored {row.AppDisplayName} back to {row.SourcePath}.");
@@ -907,11 +911,77 @@ public sealed partial class MainWindow : Window
         return false;
     }
 
+    /// <summary>
+    /// Progress handler for long copies: drives the progress bar and a detail line showing
+    /// percent, bytes, files, speed, time left and the file being copied. Created on the UI
+    /// thread, so reports from the copy's worker thread are marshalled back automatically.
+    /// </summary>
+    private IProgress<CopyProgress> CreateCopyProgress()
+    {
+        var estimator = new TransferEstimator();
+        var clock = new System.Diagnostics.Stopwatch();
+        BusyProgressText.Visibility = Visibility.Visible;
+
+        return new Progress<CopyProgress>(p =>
+        {
+            if (!_isBusy)
+                return; // Late report after the operation finished.
+
+            switch (p.Phase)
+            {
+                case CopyPhase.Scanning:
+                    BusyProgressBar.IsIndeterminate = true;
+                    BusyProgressText.Text = "Counting files and measuring size...";
+                    return;
+
+                case CopyPhase.Verifying:
+                    BusyProgressBar.IsIndeterminate = false;
+                    BusyProgressBar.Maximum = 100;
+                    BusyProgressBar.Value = p.Fraction * 100;
+                    BusyProgressText.Text = $"Verifying copy: checking {p.TotalFiles:N0} files ({FormatBytes(p.TotalBytes)})...";
+                    return;
+            }
+
+            if (!clock.IsRunning)
+            {
+                estimator.Reset();
+                clock.Start();
+            }
+            estimator.Update(p.BytesCopied, clock.Elapsed);
+
+            BusyProgressBar.IsIndeterminate = false;
+            BusyProgressBar.Maximum = 100;
+            BusyProgressBar.Value = p.Fraction * 100;
+
+            var parts = new List<string>
+            {
+                $"{p.Fraction * 100:0}%",
+                $"{FormatBytes(p.BytesCopied)} of {FormatBytes(p.TotalBytes)}",
+                $"{p.FilesCopied:N0} of {p.TotalFiles:N0} files",
+            };
+            if (estimator.BytesPerSecond is double rate && rate > 0)
+                parts.Add($"{FormatBytes((long)rate)}/s");
+            var eta = estimator.EstimateRemaining(p.BytesCopied, p.TotalBytes);
+            parts.Add(eta is { } left ? $"about {TransferEstimator.FormatDuration(left)} left" : "estimating time left...");
+            if (!string.IsNullOrEmpty(p.CurrentFile))
+                parts.Add(Path.GetFileName(p.CurrentFile));
+
+            BusyProgressText.Text = string.Join("  ·  ", parts);
+        });
+    }
+
     private void SetBusy(bool busy, string? title = null, string? message = null)
     {
         _isBusy = busy;
         ScanAllButton.IsEnabled = !busy;
         BusyProgressBar.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
+        if (!busy)
+        {
+            BusyProgressBar.IsIndeterminate = true;
+            BusyProgressBar.Value = 0;
+            BusyProgressText.Text = "";
+            BusyProgressText.Visibility = Visibility.Collapsed;
+        }
         if (title != null && message != null)
             SetStatus(InfoBarSeverity.Informational, title, message);
     }
